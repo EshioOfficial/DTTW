@@ -12,7 +12,7 @@ canvas { display:block; background:linear-gradient(180deg,#041018 0%, #071a2a 10
 .ui { position:fixed; left:16px; top:16px; font-weight:600; letter-spacing:.6px; }
 .ui .score { font-size:20px; }
 .centerMsg { position:fixed; left:50%; top:50%; transform:translate(-50%,-50%); text-align:center; }
-button.primary { background:var(--accent); border:none; color:#022; padding:10px 18px; border-radius:10px; font-weight:700; cursor:pointer; }
+button.primary { background:var(--accent); border:none; color:#022; padding:10px 18px; border-radius:10px; font-weight:700; cursor:pointer; margin:4px 0; }
 .small { color:var(--muted); font-weight:500; }
 .footerNote { position:fixed; right:16px; bottom:12px; color:var(--muted); font-size:13px; }
 </style>
@@ -23,6 +23,7 @@ button.primary { background:var(--accent); border:none; color:#022; padding:10px
 <div class="ui">
   <div class="score" id="score">0</div>
   <div class="score" id="diamonds">Diamonds: 0</div>
+  <div class="score" id="autopilotTimer"></div>
   <div class="small" id="best">Best: 0</div>
 </div>
 
@@ -30,6 +31,7 @@ button.primary { background:var(--accent); border:none; color:#022; padding:10px
   <h1 style="margin:0 0 10px">Don’t Touch The Wall</h1>
   <div class="small" style="margin-bottom:18px">Tap / Click — поднять самолётик. Не касайся стен.</div>
   <button class="primary" id="startBtn">Start</button>
+  <button class="primary" id="boostersBtn">Бустеры</button>
   <div style="height:8px"></div>
   <div class="small">Space / Click / Tap — flap · Esc — pause</div>
 </div>
@@ -42,12 +44,8 @@ const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 
 let W=0,H=0,centerOffset=0,scale=1;
-
-const params = {
-  shipX:140, shipRadius:12, gravity:1100, flapImpulse:350, maxFallSpeed:900,
-  baseSpeed:220, speedIncrease:5, segWidth:28, initialGap:160, minGap:100,
-  gapShrinkPer100:8, centerYDeltaMax:20, smoothStartTime:2.0
-};
+const params = { shipX:140, shipRadius:12, gravity:1100, flapImpulse:350, maxFallSpeed:900,
+baseSpeed:220, speedIncrease:5, segWidth:28, initialGap:160, minGap:100, gapShrinkPer100:8, centerYDeltaMax:20, smoothStartTime:2.0 };
 
 let running=false, paused=false, dead=false;
 let ship={y:0, vy:0};
@@ -56,175 +54,107 @@ let speed=params.baseSpeed;
 let score=0, best=0, diamondsCollected=0, diamondsTotal=0;
 let lastTime=null, lastDiamondSegment=0;
 
+// Автопилот
+let autopilotActive=false, autopilotTime=0, autopilotOscillationPhase=0;
+const AUTOPILOT_DURATION=15, ATTRACT_RADIUS=200, AUTOPILOT_AMPLITUDE_FACTOR=0.15;
+
+// UI
 const overlay=document.getElementById('overlay'),
       scoreEl=document.getElementById('score'),
       diamondsEl=document.getElementById('diamonds'),
       bestEl=document.getElementById('best'),
+      autopilotTimerEl=document.getElementById('autopilotTimer'),
       startBtn=document.getElementById('startBtn');
 
+// Audio
 const audioCtx=new (window.AudioContext||window.webkitAudioContext)();
-function beep(freq,time=0.06,type='sine'){
-  const o=audioCtx.createOscillator();
-  const g=audioCtx.createGain();
-  o.type=type; o.frequency.value=freq;
-  g.gain.value=0.0001; o.connect(g); g.connect(audioCtx.destination);
-  const now=audioCtx.currentTime;
-  g.gain.exponentialRampToValueAtTime(0.12, now+0.004);
-  g.gain.exponentialRampToValueAtTime(0.0001, now+time);
-  o.start(now); o.stop(now+time+0.02);
-}
+function beep(freq,time=0.06,type='sine'){ const o=audioCtx.createOscillator(); const g=audioCtx.createGain(); o.type=type; o.frequency.value=freq; g.gain.value=0.0001; o.connect(g); g.connect(audioCtx.destination); const now=audioCtx.currentTime; g.gain.exponentialRampToValueAtTime(0.12, now+0.004); g.gain.exponentialRampToValueAtTime(0.0001, now+time); o.start(now); o.stop(now+time+0.02);}
 
 // LocalStorage
 try { best=Number(localStorage.getItem('dttw_best')||0); bestEl.textContent='Best: '+best;} catch(e){}
 try { diamondsTotal=Number(localStorage.getItem('dttw_diamonds')||0); diamondsEl.textContent='Diamonds: '+diamondsTotal;} catch(e){}
 
 // Resize
-function resize() {
-  W = canvas.width = window.innerWidth;
-  H = canvas.height = window.innerHeight;
-  canvas.style.width=W+'px';
-  canvas.style.height=H+'px';
-  centerOffset=H/2;
-  scale = Math.min(W/800,H/600);
-
-  params.shipRadius=12*scale;
-  params.segWidth=28*scale;
-  params.initialGap=160*scale;
-  params.minGap=100*scale;
-  params.centerYDeltaMax=20*scale;
-  params.flapImpulse=350*scale;
-  params.gravity=1100*scale;
-  params.baseSpeed=220*scale;
-  params.speedIncrease=5*scale;
-}
-window.addEventListener('resize', resize);
-resize();
+function resize(){ W=canvas.width=window.innerWidth; H=canvas.height=window.innerHeight; canvas.style.width=W+'px'; canvas.style.height=H+'px'; centerOffset=H/2; scale=Math.min(W/800,H/600); params.shipRadius=12*scale; params.segWidth=28*scale; params.initialGap=160*scale; params.minGap=100*scale; params.centerYDeltaMax=20*scale; params.flapImpulse=350*scale; params.gravity=1100*scale; params.baseSpeed=220*scale; params.speedIncrease=5*scale; }
+window.addEventListener('resize',resize); resize();
 
 // Game control
-function flap(){ if(!running||paused||dead)return; ship.vy=-params.flapImpulse; beep(800,0.08,'square');}
+function flap(){ if(!running||paused||dead||autopilotActive)return; ship.vy=-params.flapImpulse; beep(800,0.08,'square');}
 function startGame(){ if(audioCtx.state==='suspended') audioCtx.resume(); overlay.style.display='none'; reset(); running=true; paused=false; dead=false; lastTime=null; requestAnimationFrame(loop);}
 window.addEventListener('keydown',e=>{ if(e.code==='Space'){e.preventDefault(); flap();} if(e.key==='Escape'){ paused=!paused; overlay.style.display=paused?'block':'none'; if(paused) overlay.innerHTML='<h2>Paused</h2><div class="small">Press Esc to resume</div>'; }}); 
 canvas.addEventListener('mousedown',flap); 
 canvas.addEventListener('touchstart',e=>{e.preventDefault(); flap();},{passive:false}); 
 startBtn.addEventListener('click',startGame);
 
-// Utility functions
+// Boosters
+document.getElementById('boostersBtn').addEventListener('click', showBoostersMenu);
+function showBoostersMenu(){ overlay.style.display='block'; overlay.innerHTML=`<h2>Бустеры</h2><div class="small" style="margin-bottom:14px">Выберите бустер</div><button class="primary" id="autopilotBtn">Автопилот — 50 алмазов</button><div style="height:8px"></div><button class="primary" id="backBtn">Назад</button><div class="small">Алмазы: ${diamondsTotal}</div>`; document.getElementById('autopilotBtn').addEventListener('click',activateAutopilot); document.getElementById('backBtn').addEventListener('click',showMainMenu);}
+function showMainMenu(){ overlay.innerHTML=`<h1 style="margin:0 0 10px">Don’t Touch The Wall</h1><div class="small" style="margin-bottom:18px">Tap / Click — поднять самолётик. Не касайся стен.</div><button class="primary" id="startBtnMain">Start</button><button class="primary" id="boostersBtnMain">Бустеры</button><div style="height:8px"></div><div class="small">Space / Click / Tap — flap · Esc — pause</div>`; document.getElementById('startBtnMain').addEventListener('click',startGame); document.getElementById('boostersBtnMain').addEventListener('click',showBoostersMenu);}
+function activateAutopilot(){ if(diamondsTotal<50){alert("Недостаточно алмазов"); return;} diamondsTotal-=50; try{localStorage.setItem('dttw_diamonds',diamondsTotal);}catch(e){}; diamondsEl.textContent='Diamonds: '+diamondsTotal; overlay.style.display='none'; autopilotActive=true; autopilotTime=AUTOPILOT_DURATION; autopilotOscillationPhase=0; startGame();}
+
+// Utility
 function clampTunnel(cy,gap){ return Math.max(gap/2+20, Math.min(H-gap/2-20, cy)); }
-function getGap(){const shrink=Math.floor(score/100)*params.gapShrinkPer100; return Math.max(params.minGap, params.initialGap-shrink);}
+function getGap(){  return params.initialGap; }
+function createExplosion(x,y,color='#00ffd5'){ for(let i=0;i<30;i++){ const angle=Math.random()*Math.PI*2; const s=100+Math.random()*200; particles.push({x,y,vx:Math.cos(angle)*s,vy:Math.sin(angle)*s,life:1,color}); } }
+function createDiamondParticles(x,y){ for(let i=0;i<10;i++){ const angle=Math.random()*Math.PI*2; const s=40+Math.random()*60; diamondParticles.push({x,y,vx:Math.cos(angle)*s,vy:Math.sin(angle)*s,life:0.6+Math.random()*0.4,color:'gold'}); } }
+function updateParticles(dt,arr){ arr.forEach(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=200*dt;p.life-=dt*1.5;}); return arr.filter(p=>p.life>0); }
+function drawParticles(){ const drawSet=set=>{ for(let p of set){ ctx.globalAlpha=Math.max(0,p.life); ctx.beginPath(); ctx.arc(p.x,p.y,3*scale,0,Math.PI*2); ctx.fillStyle=p.color; ctx.fill(); } ctx.globalAlpha=1;}; drawSet(particles); drawSet(diamondParticles); }
 
-function reset(){
-  ship={y:centerOffset, vy:0}; tunnel=[]; diamonds=[]; particles=[]; diamondParticles=[];
-  diamondsCollected=0; score=0; speed=params.baseSpeed; dead=false; lastTime=null; lastDiamondSegment=0;
-  scoreEl.textContent='0'; diamondsEl.textContent='Diamonds: '+diamondsTotal;
+// Reset
+function reset(){ ship={y:centerOffset,vy:0}; tunnel=[]; diamonds=[]; particles=[]; diamondParticles=[]; diamondsCollected=0; score=0; speed=params.baseSpeed; dead=false; lastTime=null; lastDiamondSegment=0; scoreEl.textContent='0'; diamondsEl.textContent='Diamonds: '+diamondsTotal; const smoothStartSegments=Math.ceil((params.baseSpeed*params.smoothStartTime)/params.segWidth); const segs=Math.ceil((W+200)/params.segWidth); let cy=centerOffset; for(let i=0;i<segs;i++){ let delta=0; if(i>smoothStartSegments/2){ const factor=Math.min(1,(i-smoothStartSegments/2)/(smoothStartSegments/2)); delta=(Math.random()*2-1)*params.centerYDeltaMax*factor;} cy+=delta; cy=clampTunnel(cy,params.initialGap); tunnel.push({x:i*params.segWidth,centerY:cy});} }
 
-  const smoothStartSegments=Math.ceil((params.baseSpeed*params.smoothStartTime)/params.segWidth);
-  const segs=Math.ceil((W+200)/params.segWidth);
-  let cy=centerOffset;
-  for(let i=0;i<segs;i++){
-    let delta=0;
-    if(i>smoothStartSegments/2){const factor=Math.min(1,(i-smoothStartSegments/2)/(smoothStartSegments/2)); delta=(Math.random()*2-1)*params.centerYDeltaMax*factor;}
-    cy+=delta; cy=clampTunnel(cy,params.initialGap); tunnel.push({x:i*params.segWidth, centerY:cy});
-  }
-}
-
-// Particles
-function createExplosion(x,y,color='#00ffd5'){for(let i=0;i<30;i++){const angle=Math.random()*Math.PI*2; const s=100+Math.random()*200; particles.push({x,y,vx:Math.cos(angle)*s,vy:Math.sin(angle)*s,life:1,color});}}
-function createDiamondParticles(x,y){for(let i=0;i<10;i++){const angle=Math.random()*Math.PI*2; const s=40+Math.random()*60; diamondParticles.push({x,y,vx:Math.cos(angle)*s,vy:Math.sin(angle)*s,life:0.6+Math.random()*0.4,color:'gold'});}}
-function updateParticles(dt,arr){arr.forEach(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=200*dt;p.life-=dt*1.5;}); return arr.filter(p=>p.life>0);}
-function drawParticles(){const drawSet=set=>{for(let p of set){ctx.globalAlpha=Math.max(0,p.life); ctx.beginPath(); ctx.arc(p.x,p.y,3*scale,0,Math.PI*2); ctx.fillStyle=p.color; ctx.fill();} ctx.globalAlpha=1;}; drawSet(particles); drawSet(diamondParticles);}
-
-// spawnSegment
-function spawnSegment(){
-  if(dead) return;
-  const last=tunnel[tunnel.length-1];
-  let delta=(Math.random()*2-1)*params.centerYDeltaMax;
-  let cy=last.centerY+delta;
-  cy=clampTunnel(cy,getGap());
-  tunnel.push({x:last.x+params.segWidth, centerY:cy});
-  lastDiamondSegment++;
-  if(lastDiamondSegment>=25 && Math.random()<0.3){
-    diamonds.push({x:last.x+params.segWidth, y:cy});
-    lastDiamondSegment=0;
-  }
-}
+// Spawn
+function spawnSegment(){ if(dead) return; const last=tunnel[tunnel.length-1]; let delta=(Math.random()*2-1)*params.centerYDeltaMax; let cy=last.centerY+delta; cy=clampTunnel(cy,getGap()); tunnel.push({x:last.x+params.segWidth, centerY:cy}); lastDiamondSegment++; if(lastDiamondSegment>=25 && Math.random()<0.3){ diamonds.push({x:last.x+params.segWidth,y:cy}); lastDiamondSegment=0;}}
 
 // Die
-function die(){
-  if(dead) return;
-  createExplosion(params.shipX,ship.y);
-  dead=true; running=false; beep(120,0.6,'sawtooth');
-
-  overlay.style.display='block';
-  overlay.innerHTML=`
-    <h2 style="margin:0 0 12px">Game Over</h2>
-    <div class="small" style="margin-bottom:14px">Score: ${Math.floor(score)}</div>
-    <div class="small" style="margin-bottom:14px">Diamonds: ${diamondsCollected}</div>
-    <button class="primary" id="startBtn2">Try Again</button>
-    <div style="height:8px"></div>
-    <div class="small">Best: ${best}</div>
-  `;
-  document.getElementById('startBtn2').addEventListener('click', ()=>{ overlay.style.display='none'; reset(); startGame(); });
-
-  if(Math.floor(score)>best){best=Math.floor(score); try{localStorage.setItem('dttw_best',best);}catch(e){}}
-  bestEl.textContent='Best: '+best;
-}
+function die(){ if(dead) return; createExplosion(params.shipX,ship.y); dead=true; running=false; beep(120,0.6,'sawtooth'); overlay.style.display='block'; overlay.innerHTML=`<h2 style="margin:0 0 12px">Game Over</h2><div class="small" style="margin-bottom:14px">Score: ${Math.floor(score)}</div><div class="small" style="margin-bottom:14px">Diamonds: ${diamondsCollected}</div><button class="primary" id="startBtn2">Try Again</button><button class="primary" id="boostersBtnAfter">Бустеры</button><div style="height:8px"></div><div class="small">Best: ${best}</div>`; document.getElementById('startBtn2').addEventListener('click',()=>{ overlay.style.display='none'; reset(); startGame(); }); document.getElementById('boostersBtnAfter').addEventListener('click',showBoostersMenu); if(Math.floor(score)>best){ best=Math.floor(score); try{localStorage.setItem('dttw_best',best);}catch(e){} } bestEl.textContent='Best: '+best; }
 
 // Update
 function update(dt){
-  particles=updateParticles(dt,particles);
-  diamondParticles=updateParticles(dt,diamondParticles);
-  if(!running || paused || dead)return;
+  particles=updateParticles(dt,particles); diamondParticles=updateParticles(dt,diamondParticles);
+  if(!running||paused||dead)return;
+  let logicalShipX=params.shipX;
 
-  ship.vy+=params.gravity*dt; ship.vy=Math.min(ship.vy,params.maxFallSpeed); ship.y+=ship.vy*dt;
-  speed=params.baseSpeed+Math.floor(score/100)*params.speedIncrease;
-  const dx=speed*dt;
+  if(autopilotActive){
+    autopilotOscillationPhase+=dt*6;
+    let i=0; while(i<tunnel.length-1 && tunnel[i+1].x<logicalShipX)i++;
+    const a=tunnel[i], b=tunnel[i+1]||a; const t=(logicalShipX-a.x)/(b.x-a.x||1); const centerY=a.centerY+(b.centerY-a.centerY)*t; const gap=getGap(); const amplitude=gap*AUTOPILOT_AMPLITUDE_FACTOR;
+    ship.y+=((centerY+Math.sin(autopilotOscillationPhase)*amplitude)-ship.y)*dt*6;
+    speed=params.baseSpeed*6;
 
-  for(let s of tunnel) s.x-=dx;
-  while(tunnel.length && tunnel[0].x<-params.segWidth) tunnel.shift();
-  while(tunnel.length<Math.ceil((W+200)/params.segWidth)) spawnSegment();
+    for(let j=diamonds.length-1;j>=0;j--){
+      const d=diamonds[j]; const dx=d.x-logicalShipX; const dy=d.y-ship.y; const dist=Math.sqrt(dx*dx+dy*dy);
+      if(dist<ATTRACT_RADIUS){ d.x+=-dx*dt*15; d.y+=-dy*dt*15; }
+      if(dist<params.shipRadius+8){ diamondsCollected++; diamondsTotal++; try{localStorage.setItem('dttw_diamonds',diamondsTotal);}catch(e){}; diamondsEl.textContent='Diamonds: '+diamondsTotal; createDiamondParticles(d.x,d.y); beep(1200,0.05,'square'); diamonds.splice(j,1);}
+    }
+    autopilotTime-=dt; autopilotTimerEl.textContent='Автопилот: '+Math.ceil(autopilotTime)+'s'; if(autopilotTime<=0){ autopilotActive=false; autopilotTimerEl.textContent=''; }
+  } else {
+    autopilotTimerEl.textContent='';
+    ship.vy+=params.gravity*dt; ship.vy=Math.min(ship.vy,params.maxFallSpeed); ship.y+=ship.vy*dt;
+    speed=params.baseSpeed+Math.floor(score/100)*params.speedIncrease;
+    for(let j=diamonds.length-1;j>=0;j--){ const d=diamonds[j]; const dx=d.x-logicalShipX; const dy=d.y-ship.y; if(Math.sqrt(dx*dx+dy*dy)<params.shipRadius+8){ diamondsCollected++; diamondsTotal++; try{localStorage.setItem('dttw_diamonds',diamondsTotal);}catch(e){}; diamondsEl.textContent='Diamonds: '+diamondsTotal; createDiamondParticles(d.x,d.y); beep(1200,0.05,'square'); diamonds.splice(j,1);}}
+  }
 
+  const dx=speed*dt; for(let s of tunnel) s.x-=dx; while(tunnel.length && tunnel[0].x<-params.segWidth) tunnel.shift(); while(tunnel.length<Math.ceil((W+200)/params.segWidth)) spawnSegment();
   for(let d of diamonds) d.x-=dx; diamonds=diamonds.filter(d=>d.x>-20);
-
   score+=dx*0.1; scoreEl.textContent=Math.floor(score);
 
-  const logicalShipX=params.shipX;
-  let i=0; while(i<tunnel.length-1 && tunnel[i+1].x<logicalShipX)i++;
-  const a=tunnel[i], b=tunnel[i+1]||a;
-  const t=(logicalShipX-a.x)/(b.x-a.x||1);
-  const centerY=a.centerY+(b.centerY-a.centerY)*t;
-  const gap=getGap();
-  const topY=centerY-gap/2; const botY=centerY+gap/2;
-
-  if(!dead && (ship.y-params.shipRadius<topY || ship.y+params.shipRadius>botY)) die();
-
-  for(let j=diamonds.length-1;j>=0;j--){
-    const d=diamonds[j]; const dx=d.x-logicalShipX; const dy=d.y-ship.y;
-    if(Math.sqrt(dx*dx+dy*dy)<params.shipRadius+8){
-      diamondsCollected++; diamondsTotal++; try{localStorage.setItem('dttw_diamonds',diamondsTotal);}catch(e){}
-      diamondsEl.textContent='Diamonds: '+diamondsTotal; createDiamondParticles(d.x,d.y); diamonds.splice(j,1); beep(1200,0.05,'square');
-    }
+  if(!autopilotActive){
+    let i=0; while(i<tunnel.length-1 && tunnel[i+1].x<logicalShipX)i++;
+    const a=tunnel[i], b=tunnel[i+1]||a; const t=(logicalShipX-a.x)/(b.x-a.x||1); const centerY=a.centerY+(b.centerY-a.centerY)*t; const gap=getGap();
+    const topY=centerY-gap/2; const botY=centerY+gap/2;
+    if(!dead && (ship.y-params.shipRadius<topY || ship.y+params.shipRadius>botY)) die();
   }
 }
 
 // Draw
 function draw(){
   ctx.clearRect(0,0,W,H);
-
-  // Tunnel
   ctx.beginPath(); ctx.moveTo(tunnel[0].x,0); for(let i=0;i<tunnel.length;i++) ctx.lineTo(tunnel[i].x,tunnel[i].centerY-getGap()/2); ctx.lineTo(tunnel[tunnel.length-1].x,0); ctx.closePath(); ctx.fillStyle='#041018'; ctx.fill();
   ctx.beginPath(); ctx.moveTo(tunnel[0].x,H); for(let i=0;i<tunnel.length;i++) ctx.lineTo(tunnel[i].x,tunnel[i].centerY+getGap()/2); ctx.lineTo(tunnel[tunnel.length-1].x,H); ctx.closePath(); ctx.fillStyle='#041018'; ctx.fill();
-
   drawParticles();
-
-  // Diamonds
   for(let d of diamonds){ ctx.beginPath(); ctx.moveTo(d.x,d.y-8*scale); ctx.lineTo(d.x+8*scale,d.y); ctx.lineTo(d.x,d.y+8*scale); ctx.lineTo(d.x-8*scale,d.y); ctx.closePath(); ctx.fillStyle='gold'; ctx.fill();}
-
-  // Ship
-  if(!dead){
-    ctx.save(); ctx.translate(params.shipX,ship.y); ctx.rotate(Math.max(-0.6,Math.min(0.6,-ship.vy/600)));
-    ctx.beginPath(); ctx.moveTo(-14*scale,-10*scale); ctx.lineTo(16*scale,0); ctx.lineTo(-14*scale,10*scale); ctx.closePath(); ctx.fillStyle='#00ffd5'; ctx.fill();
-    ctx.restore();
-  }
+  if(!dead){ ctx.save(); ctx.translate(params.shipX,ship.y); let angle = autopilotActive?0:Math.max(-0.6,Math.min(0.6,-ship.vy/600)); ctx.rotate(angle); ctx.beginPath(); ctx.moveTo(-14*scale,-10*scale); ctx.lineTo(16*scale,0); ctx.lineTo(-14*scale,10*scale); ctx.closePath(); ctx.fillStyle='#00ffd5'; ctx.fill(); ctx.restore();}
 }
 
 // Loop
