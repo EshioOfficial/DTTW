@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Don’t Touch The Wall — Retrowave</title>
+<title>Don't Touch The Wall — Retrowave</title>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -35,8 +35,8 @@ button.primary{background:linear-gradient(90deg,var(--neon-pink),var(--neon-cyan
   <div class="small" id="best">Best: 0</div>
 </div>
 <div class="centerMsg" id="overlay">
-  <h1 style="margin:0 0 12px;font-family:Orbitron,Share Tech Mono,monospace;color:var(--neon-pink);text-shadow:0 0 20px rgba(255,45,149,.2)">Don’t Touch The Wall</h1>
-  <div class="small" style="margin-bottom:18px;color:var(--muted)">Tap / Click / Space / — поднять самолётик. Не касайся стен.</div>
+  <h1 style="margin:0 0 12px;font-family:Orbitron,Share Tech Mono,monospace;color:var(--neon-pink);text-shadow:0 0 20px rgba(255,45,149,.2)">Don't Touch The Wall</h1>
+  <div class="small" style="margin-bottom:18px;color:var(--muted)">Tap / Click / Space — поднять самолётик. Не касайся стен.</div>
   <div class="small" style="margin-bottom:18px;color:var(--muted)">Esc — pause</div>
   <button class="primary" id="startBtn">Start</button>
   <button class="primary" id="boostersBtn">Бустеры</button>
@@ -48,10 +48,7 @@ button.primary{background:linear-gradient(90deg,var(--neon-pink),var(--neon-cyan
 <script>
 const canvas=document.getElementById('c'), ctx=canvas.getContext('2d');
 let W=0,H=0,scale=1,centerOffset=0;
-
-const params={shipX:140,shipRadius:12,gravity:1100,flapImpulse:350,maxFallSpeed:900,
-baseSpeed:220,speedIncrease:5,segWidth:28,initialGap:160,minGap:100,centerYDeltaMax:20,smoothStartTime:2.0};
-
+const params={shipX:140,shipRadius:12,gravity:1100,flapImpulse:350,maxFallSpeed:900,baseSpeed:220,speedIncrease:5,segWidth:28,initialGap:160,minGap:100,centerYDeltaMax:20,smoothStartTime:2.0};
 let running=false,paused=false,dead=false;
 let ship={y:0,vy:0};
 let tunnel=[],diamonds=[],particles=[],diamondParticles=[];
@@ -68,7 +65,6 @@ startBtn=document.getElementById('startBtn');
 
 let audioCtx=null;try{audioCtx=new (window.AudioContext||window.webkitAudioContext)();}catch(e){audioCtx=null;}
 function beep(freq,time=0.06,type='sine'){if(!audioCtx)return;const o=audioCtx.createOscillator();const g=audioCtx.createGain();o.type=type;o.frequency.value=freq;g.gain.value=0.0001;o.connect(g);g.connect(audioCtx.destination);const now=audioCtx.currentTime;g.gain.exponentialRampToValueAtTime(0.12, now+0.004);g.gain.exponentialRampToValueAtTime(0.0001, now+time);o.start(now);o.stop(now+time+0.02);}
-
 try{best=Number(localStorage.getItem('dttw_best')||0);bestEl.textContent='Best: '+best;}catch(e){}
 try{diamondsTotal=Number(localStorage.getItem('dttw_diamonds')||0);diamondsEl.textContent='Алмазы: '+diamondsTotal;}catch(e){}
 
@@ -78,7 +74,6 @@ window.addEventListener('resize',resize);resize();
 function clampTunnel(cy,gap){return Math.max(gap/2+20,Math.min(H-gap/2-20,cy));}
 function flap(){if(!running||paused||dead||autopilotActive)return;ship.vy=-params.flapImpulse;beep(800,0.08,'square');}
 function startGame(){if(audioCtx&&audioCtx.state==='suspended')audioCtx.resume();overlay.style.display='none';reset();running=true;paused=false;dead=false;lastTime=null;requestAnimationFrame(loop);}
-
 window.addEventListener('keydown',e=>{if(e.code==='Space'){e.preventDefault();flap();}if(e.key==='Escape'){paused=!paused;overlay.style.display=paused?'block':'none';if(paused)overlay.innerHTML='<h2 style="color:var(--neon-cyan)">Paused</h2><div class="small">Press Esc to resume</div>';}}); 
 canvas.addEventListener('mousedown',flap); 
 canvas.addEventListener('touchstart',e=>{e.preventDefault();flap();},{passive:false}); 
@@ -99,12 +94,12 @@ function showBoostersMenu(){
 }
 
 function showMainMenu(){
-  overlay.innerHTML=`<h1 style="margin:0 0 10px;color:var(--neon-pink);font-family:Orbitron,Share Tech Mono,monospace">Don’t Touch The Wall</h1>
-  <div class="small" style="margin-bottom:18px;color:var(--muted)">Tap / Click — поднять самолётик. Не касайся стен.</div>
-  <button class="primary" id="startBtnMain">Start</button>
-  <button class="primary" id="boostersBtnMain">Бустеры</button>
-  <div style="height:8px"></div>
-  <div class="small">Space / Click / Tap — flap · Esc — pause</div>`;
+  overlay.innerHTML=`<h1 style="margin:0 0 10px;color:var(--neon-pink);font-family:Orbitron,Share Tech Mono,monospace">Don't Touch The Wall</h1>
+<div class="small" style="margin-bottom:18px;color:var(--muted)">Tap / Click / Space — поднять самолётик. Не касайся стен.</div>
+<div class="small" style="margin-bottom:18px;color:var(--muted)">Esc — pause</div>
+<button class="primary" id="startBtnMain">Start</button>
+<button class="primary" id="boostersBtnMain">Бустеры</button>
+<div style="height:8px"></div>`;
   document.getElementById('startBtnMain').addEventListener('click', startGame);
   document.getElementById('boostersBtnMain').addEventListener('click', showBoostersMenu);
 }
@@ -147,7 +142,7 @@ if(Math.floor(score)>best){best=Math.floor(score);try{localStorage.setItem('dttw
 function createExplosion(x,y,color){for(let i=0;i<30;i++){const angle=Math.random()*Math.PI*2;const s=100+Math.random()*220;particles.push({x,y,vx:Math.cos(angle)*s,vy:Math.sin(angle)*s,life:1,color});}}
 function createDiamondParticles(x,y){for(let i=0;i<12;i++){const angle=Math.random()*Math.PI*2;const s=40+Math.random()*80;diamondParticles.push({x,y,vx:Math.cos(angle)*s,vy:Math.sin(angle)*s,life:0.6+Math.random()*0.6,color:'gold'});}}
 function updateParticles(dt,arr){arr.forEach(p=>{p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=200*dt;p.life-=dt*1.2;});return arr.filter(p=>p.life>0);}
-function drawParticles(){const drawSet = (set) => {for(let p of set){ctx.globalAlpha=Math.max(0,p.life);ctx.beginPath();ctx.arc(p.x,p.y,3*scale,0,Math.PI*2);ctx.fillStyle=p.color;ctx.shadowColor=p.color;ctx.shadowBlur=8;ctx.fill();ctx.shadowBlur=0;}ctx.globalAlpha=1;};drawSet(particles);drawSet(diamondParticles);}
+function drawParticles(){const drawSet=(set)=>{for(let p of set){ctx.globalAlpha=Math.max(0,p.life);ctx.beginPath();ctx.arc(p.x,p.y,3*scale,0,Math.PI*2);ctx.fillStyle=p.color;ctx.shadowColor=p.color;ctx.shadowBlur=8;ctx.fill();ctx.shadowBlur=0;}ctx.globalAlpha=1;};drawSet(particles);drawSet(diamondParticles);}
 
 function update(dt){
     tunnelPhase += dt*6; // плавная анимация стен
@@ -163,13 +158,13 @@ function update(dt){
         speed=params.baseSpeed*6;
         for(let j=diamonds.length-1;j>=0;j--){const d=diamonds[j];const dx=d.x-logicalShipX;const dy=d.y-ship.y;const dist=Math.sqrt(dx*dx+dy*dy);
             if(dist<ATTRACT_RADIUS){d.x+=-dx*dt*15;d.y+=-dy*dt*15;}
-            if(dist<params.shipRadius+10){diamondsCollected++;diamondsTotal++;try{localStorage.setItem('dttw_diamonds',diamondsTotal);}catch(e){};diamondsEl.textContent='Алмазы: '+diamondsTotal;createDiamondParticles(d.x,d.y);beep(1200,0.05,'square');diamonds.splice(j,1);}}
+            if(dist<params.shipRadius+10){diamondsCollected++;diamondsTotal++;try{localStorage.setItem('dttw_diamonds',diamondsTotal);}catch(e){};diamondsEl.textContent='Алмазы: '+diamondsTotal;createDiamondParticles(d.x,d.y);beep(1200,0.05,'square');diamonds.splice(j,1);} }
         autopilotTime-=dt; autopilotTimerEl.textContent='Автопилот: '+Math.ceil(autopilotTime)+'s';if(autopilotTime<=0){autopilotActive=false;autopilotTimerEl.textContent='';}
     }else{
         autopilotTimerEl.textContent='';
         ship.vy+=params.gravity*dt; ship.vy=Math.min(ship.vy,params.maxFallSpeed); ship.y+=ship.vy*dt;
         speed=params.baseSpeed+Math.floor(score/100)*params.speedIncrease;
-        for(let j=diamonds.length-1;j>=0;j--){ const d=diamonds[j]; const dx=d.x-logicalShipX; const dy=d.y-ship.y;if(Math.sqrt(dx*dx+dy*dy)<params.shipRadius+10){diamondsCollected++;diamondsTotal++;try{localStorage.setItem('dttw_diamonds',diamondsTotal);}catch(e){};diamondsEl.textContent='Алмазы: '+diamondsTotal;createDiamondParticles(d.x,d.y);beep(1200,0.05,'square');diamonds.splice(j,1);}}
+        for(let j=diamonds.length-1;j>=0;j--){ const d=diamonds[j]; const dx=d.x-logicalShipX; const dy=d.y-ship.y;if(Math.sqrt(dx*dx+dy*dy)<params.shipRadius+10){diamondsCollected++;diamondsTotal++;try{localStorage.setItem('dttw_diamonds',diamondsTotal);}catch(e){};diamondsEl.textContent='Алмазы: '+diamondsTotal;createDiamondParticles(d.x,d.y);beep(1200,0.05,'square');diamonds.splice(j,1);} }
     }
     const dx=speed*dt;for(let s of tunnel)s.x-=dx;while(tunnel.length&&tunnel[0].x<-params.segWidth)tunnel.shift();while(tunnel.length<Math.ceil((W+200)/params.segWidth))spawnSegment();
     for(let d of diamonds)d.x-=dx;diamonds=diamonds.filter(d=>d.x>-20);
