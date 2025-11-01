@@ -1,9 +1,9 @@
 <!doctype html>
 <html lang="ru">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>Don't Touch The Wall — Retrowave</title>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1"/>
+<title>Don't Touch The Wall — Rertrowave Edition</title>
 <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Share+Tech+Mono&display=swap" rel="stylesheet">
 <style>
 :root{
@@ -11,23 +11,21 @@
   --neon-pink:#ff2d95;
   --neon-cyan:#00ffd5;
   --muted:#9aa6ad;
-  --flat-low:#100030;
+  --flat-low:#12002a;
 }
 html,body{height:100%;margin:0;font-family:Share Tech Mono,Orbitron,monospace;background:var(--bg-dark);color:#fff;overflow:hidden}
 #gameWrap{display:flex;align-items:center;justify-content:center;height:100%;position:relative;z-index:1}
 canvas#c{display:block;border-radius:12px;box-shadow:0 18px 50px rgba(0,0,0,.65);touch-action:none;background:transparent}
-.ui{position:fixed;left:16px;top:16px;font-weight:700;letter-spacing:1px;text-shadow:0 0 10px rgba(0,255,213,.08);z-index:3}
-.ui .score{font-size:18px;color:var(--neon-cyan);}
+.ui{position:fixed;left:14px;top:14px;font-weight:700;letter-spacing:1px;text-shadow:0 0 10px rgba(0,255,213,.08);z-index:3}
+.ui .score{font-size:18px;color:var(--neon-cyan);display:block;font-family:Orbitron,Share Tech Mono,monospace}
 .ui .small{font-size:12px;color:var(--muted);font-weight:600}
-.centerMsg{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;z-index:6}
+.centerMsg{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;z-index:60}
 button.primary{background:linear-gradient(90deg,var(--neon-pink),var(--neon-cyan));border:none;color:#031018;padding:10px 16px;border-radius:12px;font-weight:900;cursor:pointer;margin:6px 0;box-shadow:0 6px 16px rgba(139,92,255,.12)}
 .footerNote{position:fixed;right:14px;bottom:10px;color:var(--muted);font-size:12px;z-index:3}
 .scanlines{pointer-events:none;position:fixed;left:0;top:0;width:100%;height:100%;mix-blend-mode:overlay;z-index:5}
-.scanlines::after{content:"";position:absolute;left:0;top:0;width:100%;height:100%;background:repeating-linear-gradient(0deg,rgba(0,0,0,0.03) 0,rgba(255,255,255,0.02) 2px);opacity:0.2}
-@keyframes fadeIn { from { opacity:0; transform:scale(0.98);} to { opacity:1; transform:scale(1);} }
-.gfx-select { background:#031018;color:var(--neon-cyan);border:1px solid rgba(0,255,213,0.06);padding:6px 8px;border-radius:8px;font-weight:700 }
-.loading-note { color: var(--muted); margin-top:12px; font-size:13px }
-.opt-desc{color:var(--muted);font-size:12px;margin-top:8px}
+.scanlines::after{content:"";position:absolute;left:0;top:0;width:100%;height:100%;background:repeating-linear-gradient(0deg,rgba(0,0,0,0.03) 0,rgba(255,255,255,0.02) 2px);opacity:0.16}
+.shield-icon{width:14px;height:14px;border-radius:50%;display:inline-block;margin-right:6px;vertical-align:middle}
+.power-hud{margin-top:6px}
 @media (max-width:600px){ .ui .score{font-size:16px} button.primary{padding:8px 12px} }
 </style>
 </head>
@@ -37,51 +35,63 @@ button.primary{background:linear-gradient(90deg,var(--neon-pink),var(--neon-cyan
 <div class="ui">
   <div class="score" id="score">0</div>
   <div class="score" id="diamonds">Алмазы: 0</div>
-  <div class="score" id="autopilotTimer"></div>
   <div class="small" id="best">Best: 0</div>
+  <div id="powerHud" class="score power-hud"></div>
 </div>
 
 <div class="centerMsg" id="overlay" style="display:none"></div>
 
-<div class="footerNote">ver.Alpha 0.2 Retrowave Edition. Локальные рекорды.</div>
+<div class="footerNote">ver.Alpha 0.3 Retrowave Edition. </div>
 <div class="scanlines"></div>
 
 <script>
-/* ===== Core & params ===== */
+/* Final v2.2 — shield + smooth waves + stable RAF */
 const canvas = document.getElementById('c'), ctx = canvas.getContext('2d');
 let W=0,H=0,scale=1,centerOffset=0;
+
 const params = {
   shipX:140, shipRadius:12,
   gravity:1100, flapImpulse:350, maxFallSpeed:900,
   baseSpeed:220, speedIncrease:5,
   segWidth:28, initialGap:160, minGap:100, centerYDeltaMax:20, smoothStartTime:2.0
 };
+
 let running=false, paused=false, dead=false;
 let ship={y:0,vy:0};
 let tunnel=[], diamonds=[], particles=[], diamondParticles=[];
 let speed=params.baseSpeed, score=0, best=0, diamondsCollected=0, diamondsTotal=0;
 let lastTime=null, lastDiamondSegment=0;
+
 let autopilotActive=false, autopilotTime=0, autopilotOscillationPhase=0;
 const AUTOPILOT_DURATION=15, ATTRACT_RADIUS=200, AUTOPILOT_AMPLITUDE_FACTOR=0.15;
-let tunnelPhase=0, tunnelSpeed=0.02;
 
+let wavePhase = 0, waveSpeed = 1.4;
+
+/* Shield */
+let shieldActive=false, shieldCharges=0, shieldPulse=0;
+const SHIELD_MAX=3, SHIELD_COST=80;
+
+/* RAF control */
+let gameLoopId = null;
+
+/* HUD elems */
 const overlay = document.getElementById('overlay'),
       scoreEl = document.getElementById('score'),
       diamondsEl = document.getElementById('diamonds'),
       bestEl = document.getElementById('best'),
-      autopilotTimerEl = document.getElementById('autopilotTimer');
+      powerHud = document.getElementById('powerHud');
 
 let audioCtx=null;
 try{ audioCtx = new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ audioCtx=null; }
 function beep(freq,time=0.06,type='sine'){ if(!audioCtx) return; const o=audioCtx.createOscillator(); const g=audioCtx.createGain(); o.type=type; o.frequency.value=freq; g.gain.value=0.0001; o.connect(g); g.connect(audioCtx.destination); const now=audioCtx.currentTime; g.gain.exponentialRampToValueAtTime(0.12, now+0.004); g.gain.exponentialRampToValueAtTime(0.0001, now+time); o.start(now); o.stop(now+time+0.02); }
 
-/* load stats */
-try{ best = Number(localStorage.getItem('dttw_best')||0); bestEl.textContent = 'Best: ' + best; } catch(e){}
-try{ diamondsTotal = Number(localStorage.getItem('dttw_diamonds')||0); diamondsEl.textContent = 'Алмазы: ' + diamondsTotal; } catch(e){}
+/* load saved */
+try{ best = Number(localStorage.getItem('dttw_best')||0); bestEl.textContent='Best: '+best;}catch(e){}
+try{ diamondsTotal = Number(localStorage.getItem('dttw_diamonds')||0); diamondsEl.textContent='Алмазы: '+diamondsTotal;}catch(e){}
 
-/* responsive canvas */
+/* responsive */
 function resize(){
-  W = canvas.width = Math.max(360, Math.min(window.innerWidth, 1400));
+  W = canvas.width = Math.max(360, Math.min(window.innerWidth,1400));
   H = canvas.height = Math.max(360, window.innerHeight);
   canvas.style.width='100%'; canvas.style.height='100%';
   centerOffset = H/2;
@@ -100,154 +110,114 @@ window.addEventListener('resize', resize); resize();
 
 /* input */
 function flap(){ if(!running || paused || dead || autopilotActive) return; ship.vy = -params.flapImpulse; beep(800,0.08,'square'); }
-window.addEventListener('keydown', e => { if(e.code==='Space'){ e.preventDefault(); flap(); } if(e.key==='Escape'){ paused=!paused; overlay.style.display = paused ? 'block' : 'none'; if(paused) overlay.innerHTML = '<h2 style="color:var(--neon-cyan)">Paused</h2><div class=\"small\">Press Esc to resume</div>'; }});
+window.addEventListener('keydown', e=>{ if(e.code==='Space'){ e.preventDefault(); flap(); } if(e.key==='Escape'){ paused = !paused; overlay.style.display = paused ? 'block' : 'none'; if(paused) overlay.innerHTML = '<h2 style="color:var(--neon-cyan)">Paused</h2><div class=\"small\">Press Esc to resume</div>'; }});
 canvas.addEventListener('mousedown', flap);
-canvas.addEventListener('touchstart', e => { e.preventDefault(); flap(); }, { passive:false });
+canvas.addEventListener('touchstart', e=>{ e.preventDefault(); flap(); }, {passive:false});
 
-/* ===== Graphics system ===== */
-let gfxQuality = localStorage.getItem('dttw_gfx') || 'auto'; // 'auto'|'low'|'medium'|'high'
-let recommendedQuality = null; // will store recommended (from probe/device)
+/* gfx detection/settings (keeps options but simple) */
+let gfxQuality = localStorage.getItem('dttw_gfx') || 'auto';
+let recommendedQuality = null;
 let gfxDetected = 'high';
 const gfxSettings = {
-  high:   { particles:true, shadows:true, waves:true, diamondSpin:true, bgGradient:true, maxParticles:400 },
-  medium: { particles:true, shadows:false, waves:true, diamondSpin:true, bgGradient:true, maxParticles:200 },
-  low:    { particles:true, shadows:false, waves:true, diamondSpin:false, bgGradient:false, maxParticles:80 }
+  high:   { particles:true, shadows:true, waves:true, diamondSpin:true, bgGradient:true, maxParticles:280, lines:8, iStep:1 },
+  medium: { particles:true, shadows:false, waves:true, diamondSpin:true, bgGradient:true, maxParticles:150, lines:6, iStep:1 },
+  low:    { particles:true, shadows:false, waves:true, diamondSpin:false, bgGradient:false, maxParticles:80, lines:4, iStep:3 }
 };
-
 function detectByHardware(){
   const cores = navigator.hardwareConcurrency || 2;
   const ua = navigator.userAgent || '';
   const isMobile = /Mobile|Android|iPhone|iPad/i.test(ua);
-  gfxDetected = 'high';
-  if(isMobile || cores <= 4) gfxDetected = 'medium';
-  if(isMobile && cores <= 2) gfxDetected = 'low';
-  // recommendedQuality may be refined by probeFPS
+  gfxDetected='high';
+  if(isMobile || cores <= 4) gfxDetected='medium';
+  if(isMobile && cores <= 2) gfxDetected='low';
   recommendedQuality = gfxDetected;
-  if(gfxQuality === 'auto') gfxQuality = recommendedQuality;
-  try{ localStorage.setItem('dttw_gfx', gfxQuality); } catch(e){}
+  if(gfxQuality==='auto') gfxQuality = recommendedQuality;
+  try{ localStorage.setItem('dttw_gfx', gfxQuality);}catch(e){}
 }
-
-/* short FPS probe */
-function probeFPS(callback){
-  const samples = [];
-  let last = performance.now();
-  let frames = 0;
-  function step(t){
-    const dt = t - last; last = t;
-    samples.push(dt); frames++;
-    if(frames < 8) requestAnimationFrame(step);
-    else {
-      const avg = samples.reduce((a,b)=>a+b,0)/samples.length;
-      const fps = 1000/avg;
-      callback(fps);
-    }
-  }
+function probeFPS(cb){
+  const s=[]; let last=performance.now(), frames=0;
+  function step(t){ const dt = t-last; last=t; s.push(dt); frames++; if(frames<8) requestAnimationFrame(step); else { const avg = s.reduce((a,b)=>a+b,0)/s.length; cb(1000/avg); } }
   requestAnimationFrame(step);
 }
 
-/* ===== Loading screen (with text) ===== */
+/* loading -> menu */
 function showLoadingScreen(){
   detectByHardware();
-  // show initial loading with "Определяем уровень графики..."
-  const loading = document.createElement('div');
-  loading.id = 'loadingScreen';
-  loading.style.cssText = `
-    position:fixed;left:0;top:0;width:100%;height:100%;
-    background: radial-gradient(circle at 30% 20%, #060018 0%, #02010a 60%);
-    display:flex;align-items:center;justify-content:center;flex-direction:column;
-    color:#00ffd5;font-family:'Share Tech Mono',monospace;letter-spacing:1px;
-    text-shadow:0 0 10px rgba(0,255,213,.4);z-index:100;animation:fadeIn 0.45s ease-out;
-  `;
-  loading.innerHTML = `
-    <div style="font-size:18px;letter-spacing:2px;color:#9aa6ad">[ BOOT SEQUENCE... ]</div>
-    <div id="loadingLine" style="margin-top:12px;color:var(--neon-pink)">Определяем уровень графики...</div>
-    <div class="loading-note" style="margin-top:14px;color:#fff">Это займёт секунду</div>
-  `;
+  const loading = document.createElement('div'); loading.id='loadingScreen';
+  loading.style.cssText='position:fixed;left:0;top:0;width:100%;height:100%;background:radial-gradient(circle at 30% 20%, #060018 0%, #02010a 60%);display:flex;align-items:center;justify-content:center;flex-direction:column;color:#00ffd5;font-family:Share Tech Mono,monospace;z-index:100';
+  loading.innerHTML = '<div style="font-size:18px;letter-spacing:2px;color:#9aa6ad">[ BOOT SEQUENCE... ]</div><div id="loadingLine" style="margin-top:12px;color:var(--neon-pink)">Определяем уровень графики...</div><div class="loading-note" style="margin-top:14px;color:#fff">Это займёт секунду</div>';
   document.body.appendChild(loading);
-  overlay.style.display = 'none';
-
-  // run probe and then show recommended
+  overlay.style.display='none';
   probeFPS((fps)=>{
-    // combine device hint and fps
     let rec = gfxDetected;
-    if(fps < 35) rec = 'low';
-    else if(fps < 55) rec = 'medium';
-    else rec = 'high';
-    // reduce for mobile
-    const ua = navigator.userAgent||'';
-    if(/Mobile|Android|iPhone|iPad/i.test(ua)){
-      if(rec === 'high') rec = 'medium';
-      else if(rec === 'medium') rec = 'low';
-    }
+    if(fps < 35) rec='low'; else if(fps < 55) rec='medium'; else rec='high';
+    const ua = navigator.userAgent||''; if(/Mobile|Android|iPhone|iPad/i.test(ua)){ if(rec==='high') rec='medium'; else if(rec==='medium') rec='low'; }
     recommendedQuality = rec;
-    // update displayed recommended level
     const loadingLine = document.getElementById('loadingLine');
-    if(loadingLine) loadingLine.innerHTML = `Рекомендуется: <span style="color:var(--neon-pink);font-weight:900">${String(rec).toUpperCase()}</span>`;
-    // if auto mode, set current to recommended
-    if(gfxQuality === 'auto') gfxQuality = recommendedQuality;
-    try{ localStorage.setItem('dttw_gfx', gfxQuality); } catch(e){}
-    // wait for a tap or auto-advance after small delay
-    const proceed = () => {
-      loading.style.transition = 'opacity 0.45s ease-out';
-      loading.style.opacity = '0';
-      setTimeout(()=>{ if(loading && loading.parentNode) loading.parentNode.removeChild(loading); }, 460);
-      document.removeEventListener('keydown', proceed);
-      document.removeEventListener('mousedown', proceed);
-      document.removeEventListener('touchstart', proceed);
-      showMainMenu();
-    };
-    // allow immediate continue
-    document.addEventListener('keydown', proceed);
-    document.addEventListener('mousedown', proceed);
-    document.addEventListener('touchstart', proceed);
-    // and auto proceed after 1.2s
-    setTimeout(proceed, 1200);
+    if(loadingLine) loadingLine.innerHTML = `Рекомендуется: <span style="color:var(--neon-pink);font-weight:900">${rec==='low'?'Низкая':rec==='medium'?'Средняя':'Высокая'}</span>`;
+    if(gfxQuality==='auto') gfxQuality = recommendedQuality;
+    try{ localStorage.setItem('dttw_gfx', gfxQuality);}catch(e){}
+    const proceed = ()=>{ loading.style.transition='opacity .4s'; loading.style.opacity='0'; setTimeout(()=>{ if(loading && loading.parentNode) loading.parentNode.removeChild(loading); },420); showMainMenu(); };
+    document.addEventListener('keydown', proceed, {once:true}); document.addEventListener('mousedown', proceed, {once:true}); document.addEventListener('touchstart', proceed, {once:true});
+    setTimeout(proceed,1000);
   });
 }
 
-/* ===== Menus ===== */
+/* Menus */
 function showMainMenu(){
-  overlay.style.display = 'block';
-  overlay.innerHTML = `
-    <h1 style="margin:0 0 12px;font-family:Orbitron,Share Tech Mono,monospace;color:var(--neon-pink);text-shadow:0 0 20px rgba(255,45,149,.2)">Don't Touch The Wall</h1>
+  overlay.style.display='block';
+  overlay.innerHTML = `<h1 style="margin:0 0 12px;font-family:Orbitron,Share Tech Mono,monospace;color:var(--neon-pink);text-shadow:0 0 20px rgba(255,45,149,.2)">Don't Touch The Wall</h1>
     <div class="small" style="margin-bottom:10px;color:var(--muted)">Tap / Click / Space — flap · Esc — pause</div>
     <div style="display:flex;flex-direction:column;align-items:center">
-      <button class="primary" id="startBtnMenu">Играть</button>
-      <button class="primary" id="boostersBtnMenu">Бустеры</button>
-      <button class="primary" id="graphicsBtnMenu">Графика</button>
-      <div style="height:8px"></div>
-    </div>
-  `;
-  document.getElementById('startBtnMenu').addEventListener('click', ()=>{ overlay.style.display='none'; reset(); startGame(); });
-  document.getElementById('boostersBtnMenu').addEventListener('click', showBoostersMenu);
-  document.getElementById('graphicsBtnMenu').addEventListener('click', showGraphicsMenu);
+      <button class="primary" id="startBtn">Играть</button>
+      <button class="primary" id="boostersBtn">Бустеры</button>
+      <button class="primary" id="graphicsBtn">Графика</button>
+    </div>`;
+  document.getElementById('startBtn').addEventListener('click', ()=>{ overlay.style.display='none'; reset(); startGame(); }, {once:true});
+  document.getElementById('boostersBtn').addEventListener('click', showBoostersMenu);
+  document.getElementById('graphicsBtn').addEventListener('click', showGraphicsMenu);
 }
 
 function showBoostersMenu(){
-  overlay.style.display = 'block';
-  overlay.innerHTML = `
-    <h2 style="color:var(--neon-cyan);margin:0 0 12px">Бустеры</h2>
-    <div class="small" style="margin-bottom:14px;color:var(--muted)">Выберите бустер</div>
-    <button class="primary" id="autopilotBtnMenu">Автопилот — 50 алмазов</button>
-    <div style="height:8px"></div>
-    <button class="primary" id="backBtnMenu">Назад</button>
-    <div class="small" style="margin-top:8px;color:var(--muted)">Алмазы: ${diamondsTotal}</div>
-  `;
-  document.getElementById('autopilotBtnMenu').addEventListener('click', activateAutopilot);
-  document.getElementById('backBtnMenu').addEventListener('click', showMainMenu);
+    overlay.style.display='block';
+    overlay.innerHTML = `
+        <h2 style="color:var(--neon-cyan);margin:0 0 12px">Бустеры</h2>
+        <div class="small" style="margin-bottom:12px;color:var(--muted)">Выберите бустер</div>
+
+        <div style="display:flex;flex-direction:column;align-items:center;gap:10px">
+            <button class="primary" id="autopilotBtn" style="margin:0;">Автопилот — 50 алмазов</button>
+            <button class="primary" id="shieldBtn" style="margin:0;">🛡 Силовое поле — ${SHIELD_COST} алмазов</button>
+        </div>
+
+        <button class="primary" id="backBtn" style="margin-top:12px;">Назад</button>
+    `;
+
+    document.getElementById('autopilotBtn').addEventListener('click', ()=>{ 
+        if(shieldActive){ alert('Деактивируйте щит сначала.'); return; } 
+        activateAutopilot(); 
+    });
+
+    document.getElementById('shieldBtn').addEventListener('click', ()=>{ 
+        if(autopilotActive){ 
+            alert('Деактивируйте автопилот сначала.'); 
+            return; 
+        } 
+        activateShield();
+        if (running && !dead) { 
+            overlay.style.display = 'none'; 
+        }
+    });
+
+    document.getElementById('backBtn').addEventListener('click', showMainMenu, {once:true});
 }
 
-/* Graphics menu with block at top: Recommended / Current */
+
 function showGraphicsMenu(){
-  overlay.style.display = 'block';
+  overlay.style.display='block';
   const rec = recommendedQuality ? (recommendedQuality==='low'?'Низкая':recommendedQuality==='medium'?'Средняя':'Высокая') : '—';
-  const cur = gfxQuality ? (gfxQuality==='auto' ? 'Авто' : (gfxQuality==='low'?'Низкая':gfxQuality==='medium'?'Средняя':'Высокая')) : '—';
-  overlay.innerHTML = `
-    <h2 style="color:var(--neon-cyan);margin:0 0 8px">Настройки графики</h2>
-    <div id="gfxInfo" class="small" style="margin-bottom:12px;color:var(--muted)">
-      Рекомендуется: <span id="recLabel" style="color:var(--neon-pink);font-weight:900">${rec}</span><br>
-      Текущий: <span id="curLabel" style="color:var(--neon-cyan);font-weight:900">${cur}</span>
-    </div>
+  const cur = gfxQuality ? (gfxQuality==='auto'?'Авто':gfxQuality==='low'?'Низкая':gfxQuality==='medium'?'Средняя':'Высокая') : '—';
+  overlay.innerHTML = `<h2 style="color:var(--neon-cyan);margin:0 0 8px">Настройки графики</h2>
+    <div class="small" style="margin-bottom:12px;color:var(--muted)">Рекомендуется: <span id="recLabel" style="color:var(--neon-pink);font-weight:900">${rec}</span><br>Текущий: <span id="curLabel" style="color:var(--neon-cyan);font-weight:900">${cur}</span></div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;margin-top:6px">
       <button class="primary" id="gfxAuto">Авто</button>
       <button class="primary" id="gfxLow">Низкая</button>
@@ -255,281 +225,386 @@ function showGraphicsMenu(){
       <button class="primary" id="gfxHigh">Высокая</button>
     </div>
     <div style="height:10px"></div>
-    <div class="small opt-desc">Низкая — максимум FPS (плоский фон, простые волны, тени отключены)</div>
+    <div class="small opt-desc" style="color:var(--muted)">Низкая — максимум FPS (плоский фон, простые волны, тени отключены)</div>
     <div style="height:10px"></div>
-    <button class="primary" id="gfxBack">Назад</button>
-  `;
-  document.getElementById('gfxBack').addEventListener('click', showMainMenu);
-  document.getElementById('gfxAuto').addEventListener('click', ()=>{ gfxQuality='auto'; try{ localStorage.setItem('dttw_gfx','auto'); }catch(e){}; applyAutoAndNotify(); updateGfxLabels(); });
-  document.getElementById('gfxLow').addEventListener('click', ()=>{ gfxQuality='low'; try{ localStorage.setItem('dttw_gfx','low'); }catch(e){}; notifyGfxChange('Низкая'); updateGfxLabels(); });
-  document.getElementById('gfxMed').addEventListener('click', ()=>{ gfxQuality='medium'; try{ localStorage.setItem('dttw_gfx','medium'); }catch(e){}; notifyGfxChange('Средняя'); updateGfxLabels(); });
-  document.getElementById('gfxHigh').addEventListener('click', ()=>{ gfxQuality='high'; try{ localStorage.setItem('dttw_gfx','high'); }catch(e){}; notifyGfxChange('Высокая'); updateGfxLabels(); });
+    <button class="primary" id="gfxBack">Назад</button>`;
+  document.getElementById('gfxBack').addEventListener('click', showMainMenu, {once:true});
+  document.getElementById('gfxAuto').addEventListener('click', ()=>{ gfxQuality='auto'; try{ localStorage.setItem('dttw_gfx','auto'); }catch(e){}; applyAuto(); updateGfxLabels(); });
+  document.getElementById('gfxLow').addEventListener('click', ()=>{ gfxQuality='low'; try{ localStorage.setItem('dttw_gfx','low'); }catch(e){}; notify('Низкая'); updateGfxLabels(); });
+  document.getElementById('gfxMed').addEventListener('click', ()=>{ gfxQuality='medium'; try{ localStorage.setItem('dttw_gfx','medium'); }catch(e){}; notify('Средняя'); updateGfxLabels(); });
+  document.getElementById('gfxHigh').addEventListener('click', ()=>{ gfxQuality='high'; try{ localStorage.setItem('dttw_gfx','high'); }catch(e){}; notify('Высокая'); updateGfxLabels(); });
+}
+function updateGfxLabels(){ const recLabel=document.getElementById('recLabel'); const curLabel=document.getElementById('curLabel'); if(recLabel) recLabel.textContent = recommendedQuality ? (recommendedQuality==='low'?'Низкая':recommendedQuality==='medium'?'Средняя':'Высокая') : '—'; if(curLabel) curLabel.textContent = gfxQuality ? (gfxQuality==='auto'?'Авто':gfxQuality==='low'?'Низкая':gfxQuality==='medium'?'Средняя':'Высокая') : '—'; }
+function notify(t){ const n=document.createElement('div'); n.style.cssText='position:fixed;left:50%;top:12%;transform:translateX(-50%);background:rgba(3,16,24,0.9);padding:10px 16px;border-radius:10px;color:#00ffd5;z-index:200'; n.textContent='Выбран уровень графики: '+t; document.body.appendChild(n); setTimeout(()=>{ n.style.transition='opacity .4s'; n.style.opacity=0; setTimeout(()=>n.remove(),420); },1200); }
+function applyAuto(){ detectByHardware(); probeFPS((fps)=>{ let rec=gfxDetected; if(fps<35) rec='low'; else if(fps<55) rec='medium'; else rec='high'; const ua=navigator.userAgent||''; if(/Mobile|Android|iPhone|iPad/i.test(ua)){ if(rec==='high') rec='medium'; else if(rec==='medium') rec='low'; } recommendedQuality = rec; if(gfxQuality==='auto') gfxQuality = recommendedQuality; try{ localStorage.setItem('dttw_gfx',gfxQuality);}catch(e){}; notify((recommendedQuality==='low'?'Низкая':recommendedQuality==='medium'?'Средняя':'Высокая')); updateGfxLabels(); }); }
+
+/* Boosters: autopilot and shield */
+/* IMPORTANT: for shield, ensure activation happens AFTER reset when starting from menu */
+function activateAutopilot(){
+  if(shieldActive){ alert('Деактивируйте щит сначала.'); return; }
+  if(diamondsTotal < 50){ alert('Недостаточно алмазов'); return; }
+  diamondsTotal -= 50; try{ localStorage.setItem('dttw_diamonds', diamondsTotal);}catch(e){}; diamondsEl.textContent='Алмазы: '+diamondsTotal;
+  autopilotActive = true; autopilotTime = AUTOPILOT_DURATION; autopilotOscillationPhase = 0;
+  overlay.style.display='none';
+  if(!running){ reset(); startGame(); } else updatePowerHud();
 }
 
-/* update labels in gfx menu when changed */
-function updateGfxLabels(){
-  const recLabel = document.getElementById('recLabel');
-  const curLabel = document.getElementById('curLabel');
-  if(recLabel) recLabel.textContent = recommendedQuality ? (recommendedQuality==='low'?'Низкая':recommendedQuality==='medium'?'Средняя':'Высокая') : '—';
-  if(curLabel) curLabel.textContent = gfxQuality ? (gfxQuality==='auto'?'Авто':gfxQuality==='low'?'Низкая':gfxQuality==='medium'?'Средняя':'Высокая') : '—';
-}
+function activateShield(){
+  if(autopilotActive){ alert('Деактивируйте автопилот сначала.'); return; }
+  if(shieldActive){ alert('Силовое поле уже активно.'); return; }
+  if(diamondsTotal < SHIELD_COST){ alert('Недостаточно алмазов'); return; }
 
-/* helper notifications */
-function notifyGfxChange(label){
-  updateGfxLabels();
-  const note = document.createElement('div');
-  note.style.cssText = 'position:fixed;left:50%;top:12%;transform:translateX(-50%);background:rgba(3,16,24,0.9);padding:10px 16px;border-radius:10px;color:#00ffd5;z-index:200;font-family:Share Tech Mono,monospace';
-  note.textContent = 'Выбран уровень графики: ' + label;
-  document.body.appendChild(note);
-  setTimeout(()=>{ note.style.transition='opacity 0.4s'; note.style.opacity=0; setTimeout(()=>note.remove(),420); }, 1200);
-}
+  diamondsTotal -= SHIELD_COST;
+  try{ localStorage.setItem('dttw_diamonds', diamondsTotal);}catch(e){}
+  diamondsEl.textContent='Алмазы: '+diamondsTotal;
 
-/* apply auto -> recompute recommended and set current if auto */
-function applyAutoAndNotify(){
-  detectByHardware();
-  probeFPS((fps)=>{
-    let rec = gfxDetected;
-    if(fps < 35) rec = 'low';
-    else if(fps < 55) rec = 'medium';
-    else rec = 'high';
-    const ua = navigator.userAgent||'';
-    if(/Mobile|Android|iPhone|iPad/i.test(ua)){
-      if(rec === 'high') rec = 'medium';
-      else if(rec === 'medium') rec = 'low';
-    }
-    recommendedQuality = rec;
-    if(gfxQuality === 'auto') gfxQuality = recommendedQuality;
-    try{ localStorage.setItem('dttw_gfx', gfxQuality); } catch(e){}
-    const label = recommendedQuality==='low'?'Низкая':recommendedQuality==='medium'?'Средняя':'Высокая';
-    notifyGfxChange('Auto → ' + label);
-    updateGfxLabels();
-  });
-}
-
-/* ===== Game logic ===== */
-function startGame(){ if(audioCtx && audioCtx.state==='suspended') audioCtx.resume(); overlay.style.display='none'; reset(); running=true; paused=false; dead=false; lastTime=null; requestAnimationFrame(loop); }
-function activateAutopilot(){ if(diamondsTotal<50){ alert('Недостаточно алмазов'); return;} diamondsTotal-=50; try{ localStorage.setItem('dttw_diamonds', diamondsTotal); }catch(e){}; diamondsEl.textContent='Алмазы: '+diamondsTotal; overlay.style.display='none'; autopilotActive=true; autopilotTime=AUTOPILOT_DURATION; autopilotOscillationPhase=0; startGame(); }
-
-function reset(){
-  ship={y:centerOffset,vy:0}; tunnel=[]; diamonds=[]; particles=[]; diamondParticles=[]; diamondsCollected=0; score=0; speed=params.baseSpeed; dead=false; lastTime=null; lastDiamondSegment=0;
-  scoreEl.textContent='0'; diamondsEl.textContent='Алмазы: '+diamondsTotal;
-  const smoothStartSegments=Math.ceil((params.baseSpeed*params.smoothStartTime)/params.segWidth);
-  const segs=Math.ceil((W+200)/params.segWidth);
-  let cy=centerOffset;
-  for(let i=0;i<segs;i++){
-    let delta=0;
-    if(i>smoothStartSegments/2){
-      const factor = Math.min(1,(i-smoothStartSegments/2)/(smoothStartSegments/2));
-      delta = (Math.random()*2-1)*params.centerYDeltaMax*factor;
-    }
-    cy += delta; cy = clampTunnel(cy, params.initialGap);
-    tunnel.push({ x: i*params.segWidth, centerY: cy });
+  // If game not running, reset first, then enable shield (to avoid reset clearing it)
+  if(!running){
+    reset();
+    // enable shield AFTER reset
+    shieldActive = true;
+    shieldCharges = SHIELD_MAX;
+    shieldPulse = 0;
+    startGame();
+  } else {
+    shieldActive = true;
+    shieldCharges = SHIELD_MAX;
+    shieldPulse = 0;
+    overlay.style.display='none';
+    updatePowerHud();
   }
-  // reset canvas drawing state to avoid leaks
-  ctx.globalAlpha = 1; ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'; ctx.globalCompositeOperation = 'source-over';
 }
 
-/* spawn segment */
-function spawnSegment(){ if(dead) return; const last = tunnel[tunnel.length-1]; let delta=(Math.random()*2-1)*params.centerYDeltaMax; let cy = last.centerY + delta; cy = clampTunnel(cy, params.initialGap); tunnel.push({ x: last.x + params.segWidth, centerY: cy }); lastDiamondSegment++; if(lastDiamondSegment>=20 && Math.random()<0.35){ diamonds.push({ x: last.x+params.segWidth, y: cy }); lastDiamondSegment=0; } }
+/* clear shield helper */
+function clearShield(){
+  shieldActive = false;
+  shieldCharges = 0;
+  shieldPulse = 0;
+  updatePowerHud();
+}
 
-function die(){ if(dead) return; createExplosion(params.shipX, ship.y, 'rgba(0,255,213,0.95)'); dead=true; running=false; beep(120,0.6,'sawtooth'); overlay.style.display='block'; overlay.innerHTML = `<h2 style="margin:0 0 12px;color:var(--neon-pink)">Game Over</h2><div class="small" style="margin-bottom:14px;color:var(--muted)">Score: ${Math.floor(score)}</div><div class="small" style="margin-bottom:14px;color:var(--muted)">Diamonds: ${diamondsCollected}</div><button class="primary" id="tryAgainBtn">Try Again</button><button class="primary" id="boostersAfterBtn">Бустеры</button><div style="height:8px"></div><div class="small">Best: ${best}</div>`; document.getElementById('tryAgainBtn').addEventListener('click', ()=>{ overlay.style.display='none'; reset(); startGame(); }); document.getElementById('boostersAfterBtn').addEventListener('click', showBoostersMenu); if(Math.floor(score)>best){ best=Math.floor(score); try{ localStorage.setItem('dttw_best',best);}catch(e){} } bestEl.textContent='Best: '+best; }
+/* shield hit + bounce */
+function shieldTakeHit(hitTop){
+  if(!shieldActive) return;
+  shieldCharges = Math.max(0, shieldCharges - 1);
+  shieldPulse = 0.36;
+  beep(260,0.12,'square');
+  createExplosion(params.shipX, ship.y, 'rgba(255,255,180,0.95)');
+  const bounceSpeed = Math.abs(params.flapImpulse) * 0.6;
+  if(hitTop){
+    ship.vy = bounceSpeed;
+    ship.y = Math.min(ship.y + 6*scale, H - params.shipRadius - 10);
+  } else {
+    ship.vy = -bounceSpeed;
+    ship.y = Math.max(ship.y - 6*scale, params.shipRadius + 10);
+  }
+  updatePowerHud();
+  if(shieldCharges <= 0){
+    shieldActive = false;
+    const n=document.createElement('div'); n.style.cssText='position:fixed;left:50%;top:14%;transform:translateX(-50%);background:rgba(3,16,24,0.9);padding:8px 12px;border-radius:8px;color:#ff9a9a;z-index:200'; n.textContent='Силовое поле исчерпано'; document.body.appendChild(n);
+    setTimeout(()=>{ n.style.transition='opacity .4s'; n.style.opacity=0; setTimeout(()=>n.remove(),420); },900);
+    updatePowerHud();
+  }
+}
 
-/* ===== Particles (caps & safe drawing) ===== */
+/* HUD update */
+function updatePowerHud(){
+  powerHud.innerHTML = '';
+  if(autopilotActive){
+    powerHud.textContent = 'Автопилот: ' + Math.ceil(Math.max(0,autopilotTime)) + 's';
+    return;
+  }
+  if(shieldActive){
+    for(let i=0;i<SHIELD_MAX;i++){
+      const s = document.createElement('span'); s.className='shield-icon';
+      if(i < shieldCharges){
+        s.style.background = 'radial-gradient(circle at 30% 30%, rgba(0,255,213,0.95), rgba(0,255,213,0.25))';
+        s.style.boxShadow = '0 0 10px rgba(0,255,213,0.55)';
+      } else {
+        s.style.background = 'rgba(10,10,10,0.22)'; s.style.boxShadow='none';
+      }
+      powerHud.appendChild(s);
+    }
+    return;
+  }
+  powerHud.innerHTML = '';
+}
+
+/* Game core */
+function reset(){
+  stopLoop();
+  ship = { y: centerOffset, vy: 0 };
+  tunnel.length = 0; diamonds.length = 0; particles.length = 0; diamondParticles.length = 0;
+  diamondsCollected = 0; score = 0; speed = params.baseSpeed; dead = false; lastTime = null; lastDiamondSegment = 0;
+  scoreEl.textContent='0'; diamondsEl.textContent='Алмазы: '+diamondsTotal;
+  const smoothStartSegments = Math.ceil((params.baseSpeed * params.smoothStartTime) / params.segWidth);
+  const segs = Math.ceil((W + 200) / params.segWidth);
+  let cy = centerOffset;
+  for(let i=0;i<segs;i++){
+    let delta = 0;
+    if(i > smoothStartSegments/2){
+      const factor = Math.min(1, (i - smoothStartSegments/2) / (smoothStartSegments/2));
+      delta = (Math.random()*2 - 1) * params.centerYDeltaMax * factor;
+    }
+    cy += delta; cy = clampTunnel(cy, params.initialGap); tunnel.push({ x: i*params.segWidth, centerY: cy });
+  }
+  ctx.globalAlpha=1; ctx.shadowBlur=0; ctx.shadowColor='transparent';
+  // DO NOT clear shield here — shield activation should survive if set AFTER reset.
+  // clearShield(); <-- intentionally not called
+}
+
+/* spawn */
+function spawnSegment(){
+  if(dead) return;
+  const last = tunnel[tunnel.length-1];
+  let delta = (Math.random()*2 - 1) * params.centerYDeltaMax;
+  let cy = last.centerY + delta; cy = clampTunnel(cy, params.initialGap);
+  tunnel.push({ x: last.x + params.segWidth, centerY: cy });
+  lastDiamondSegment++;
+  if(lastDiamondSegment >= 20 && Math.random() < 0.35){
+    diamonds.push({ x: last.x + params.segWidth, y: cy });
+    lastDiamondSegment = 0;
+  }
+}
+
+/* die */
+function die(){
+  if(dead) return;
+  createExplosion(params.shipX, ship.y, 'rgba(0,255,213,0.95)');
+  dead = true; running = false;
+  stopLoop();
+  beep(120,0.6,'sawtooth');
+  overlay.style.display='block';
+  overlay.innerHTML = `<h2 style="margin:0 0 12px;color:var(--neon-pink)">Game Over</h2>
+    <div class="small" style="margin-bottom:14px;color:var(--muted)">Score: ${Math.floor(score)}</div>
+    <div class="small" style="margin-bottom:14px;color:var(--muted)">Diamonds: ${diamondsCollected}</div>
+    <button class="primary" id="tryBtn">Try Again</button>
+    <button class="primary" id="boostersAfterBtn">Бустеры</button>
+    <div style="height:8px"></div>
+    <div class="small">Best: ${best}</div>`;
+  document.getElementById('tryBtn').addEventListener('click', ()=>{ overlay.style.display='none'; reset(); startGame(); }, {once:true});
+  document.getElementById('boostersAfterBtn').addEventListener('click', showBoostersMenu);
+  if(Math.floor(score) > best){ best = Math.floor(score); try{ localStorage.setItem('dttw_best', best);}catch(e){} }
+  bestEl.textContent = 'Best: ' + best;
+}
+
+/* Particles */
 function createExplosion(x,y,color){
   if(!gfxSettings[gfxQuality].particles) return;
   const cap = gfxSettings[gfxQuality].maxParticles || 120;
   const free = Math.max(0, cap - (particles.length + diamondParticles.length));
-  const toSpawn = Math.min(30, free);
-  for(let i=0;i<toSpawn;i++){ const angle=Math.random()*Math.PI*2; const s=80+Math.random()*160; particles.push({ x,y,vx:Math.cos(angle)*s, vy:Math.sin(angle)*s, life:1, color }); }
+  const toSpawn = Math.min(25, free);
+  for(let i=0;i<toSpawn;i++){ const angle=Math.random()*Math.PI*2; const s=60+Math.random()*120; particles.push({ x,y,vx:Math.cos(angle)*s, vy:Math.sin(angle)*s, life:1, color }); }
 }
 function createDiamondParticles(x,y){
   if(!gfxSettings[gfxQuality].particles) return;
   const cap = gfxSettings[gfxQuality].maxParticles || 120;
   const free = Math.max(0, cap - (particles.length + diamondParticles.length));
-  const toSpawn = Math.min(12, free);
-  for(let i=0;i<toSpawn;i++){ const angle=Math.random()*Math.PI*2; const s=30+Math.random()*60; diamondParticles.push({ x,y,vx:Math.cos(angle)*s, vy:Math.sin(angle)*s, life:0.6+Math.random()*0.6, color:'gold' }); }
+  const toSpawn = Math.min(10, free);
+  for(let i=0;i<toSpawn;i++){ const angle=Math.random()*Math.PI*2; const s=20+Math.random()*50; diamondParticles.push({ x,y,vx:Math.cos(angle)*s, vy:Math.sin(angle)*s, life:0.6+Math.random()*0.6, color:'gold' }); }
 }
-function updateParticles(dt, arr){ arr.forEach(p=>{ p.x += p.vx*dt; p.y += p.vy*dt; p.vy += 200*dt; p.life -= dt*1.2; }); return arr.filter(p=>p.life>0); }
-
+function updateParticles(dt,arr){ arr.forEach(p=>{ p.x += p.vx*dt; p.y += p.vy*dt; p.vy += 200*dt; p.life -= dt*1.2; }); return arr.filter(p=>p.life>0); }
 function drawParticles(){
   if(!gfxSettings[gfxQuality].particles) return;
   const useShadows = gfxSettings[gfxQuality].shadows;
   for(let p of particles){
-    ctx.save();
-    ctx.globalAlpha = Math.max(0, p.life);
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, 3*scale, 0, Math.PI*2);
-    ctx.fillStyle = p.color;
-    if(useShadows){ ctx.shadowColor = p.color; ctx.shadowBlur = 8; } else { ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'; }
-    ctx.fill();
-    ctx.restore();
+    ctx.save(); ctx.globalAlpha = Math.max(0,p.life); ctx.beginPath(); ctx.arc(p.x,p.y,3*scale,0,Math.PI*2); ctx.fillStyle=p.color;
+    if(useShadows){ ctx.shadowColor=p.color; ctx.shadowBlur=8; } else { ctx.shadowBlur=0; ctx.shadowColor='transparent'; }
+    ctx.fill(); ctx.restore();
   }
   for(let p of diamondParticles){
-    ctx.save();
-    ctx.globalAlpha = Math.max(0, p.life);
-    ctx.beginPath();
-    ctx.arc(p.x, p.y, 3*scale, 0, Math.PI*2);
-    ctx.fillStyle = p.color;
-    if(useShadows){ ctx.shadowColor = p.color; ctx.shadowBlur = 8; } else { ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'; }
-    ctx.fill();
-    ctx.restore();
+    ctx.save(); ctx.globalAlpha = Math.max(0,p.life); ctx.beginPath(); ctx.arc(p.x,p.y,3*scale,0,Math.PI*2); ctx.fillStyle=p.color;
+    if(useShadows){ ctx.shadowColor=p.color; ctx.shadowBlur=8; } else { ctx.shadowBlur=0; ctx.shadowColor='transparent'; }
+    ctx.fill(); ctx.restore();
   }
-  ctx.globalAlpha = 1;
-  ctx.shadowBlur = 0;
-  ctx.shadowColor = 'transparent';
+  ctx.globalAlpha=1; ctx.shadowBlur=0; ctx.shadowColor='transparent';
 }
 
-/* ===== Update & Draw (background leak fixed) ===== */
+/* Update with delta-time */
 function update(dt){
-  const baseNominal = (gfxQuality==='low') ? 0.012 : 0.02;
-  const target = dead ? baseNominal * 0.25 : baseNominal;
-  tunnelSpeed += (target - tunnelSpeed) * 0.06;
-  tunnelPhase += tunnelSpeed;
+  // wave uses dt => smooth independent of FPS
+  // for low gfx, we'll slow waveSpeed and amplitude below in draw
 
   particles = updateParticles(dt, particles);
   diamondParticles = updateParticles(dt, diamondParticles);
+
+  if(shieldPulse > 0) shieldPulse = Math.max(0, shieldPulse - dt);
 
   if(!running || paused || dead) return;
 
   let logicalShipX = params.shipX;
 
   if(autopilotActive){
-    autopilotOscillationPhase += dt*6;
+    autopilotOscillationPhase += dt * 6;
     let i=0; while(i < tunnel.length-1 && tunnel[i+1].x < logicalShipX) i++;
-    const a=tunnel[i], b=tunnel[i+1]||a;
-    const t=(logicalShipX - a.x)/(b.x - a.x || 1);
-    const centerY = a.centerY + (b.centerY - a.centerY)*t;
-    const gap = params.initialGap;
-    const amplitude = gap * AUTOPILOT_AMPLITUDE_FACTOR;
+    const a=tunnel[i], b=tunnel[i+1]||a; const t=(logicalShipX - a.x)/(b.x - a.x || 1);
+    const centerY = a.centerY + (b.centerY - a.centerY) * t;
+    const gap = params.initialGap; const amplitude = gap * AUTOPILOT_AMPLITUDE_FACTOR;
     ship.y += ((centerY + Math.sin(autopilotOscillationPhase)*amplitude) - ship.y) * dt * 6;
     speed = params.baseSpeed * 6;
 
-    for(let j=diamonds.length-1;j>=0;j--){
-      const d=diamonds[j]; const dx=d.x-logicalShipX; const dy=d.y-ship.y; const dist=Math.sqrt(dx*dx+dy*dy);
-      if(dist < ATTRACT_RADIUS){ d.x += -dx*dt*15; d.y += -dy*dt*15; }
+    for(let j=diamonds.length-1;j>=0;j--){ const d=diamonds[j]; const dx=d.x-logicalShipX; const dy=d.y-ship.y; const dist=Math.sqrt(dx*dx+dy*dy);
+      if(dist < ATTRACT_RADIUS){ d.x += -dx * dt * 15; d.y += -dy * dt * 15; }
       if(dist < params.shipRadius + 10){ diamondsCollected++; diamondsTotal++; try{ localStorage.setItem('dttw_diamonds', diamondsTotal);}catch(e){}; diamondsEl.textContent='Алмазы: '+diamondsTotal; createDiamondParticles(d.x,d.y); beep(1200,0.05,'square'); diamonds.splice(j,1); }
     }
-    autopilotTime -= dt; autopilotTimerEl.textContent = 'Автопилот: ' + Math.ceil(autopilotTime) + 's';
-    if(autopilotTime <= 0){ autopilotActive = false; autopilotTimerEl.textContent = ''; }
+    autopilotTime -= dt; if(autopilotTime <= 0) autopilotActive = false;
+    updatePowerHud();
   } else {
-    autopilotTimerEl.textContent = '';
     ship.vy += params.gravity * dt; ship.vy = Math.min(ship.vy, params.maxFallSpeed); ship.y += ship.vy * dt;
     speed = params.baseSpeed + Math.floor(score/100) * params.speedIncrease;
-    for(let j=diamonds.length-1;j>=0;j--){
-      const d=diamonds[j]; const dx=d.x-logicalShipX; const dy=d.y-ship.y;
-      if(Math.sqrt(dx*dx+dy*dy) < params.shipRadius + 10){
-        diamondsCollected++; diamondsTotal++; try{ localStorage.setItem('dttw_diamonds', diamondsTotal);}catch(e){}; diamondsEl.textContent='Алмазы: '+diamondsTotal; createDiamondParticles(d.x,d.y); beep(1200,0.05,'square'); diamonds.splice(j,1);
-      }
-    }
+    for(let j=diamonds.length-1;j>=0;j--){ const d=diamonds[j]; const dx=d.x-logicalShipX; const dy=d.y-ship.y; if(Math.sqrt(dx*dx+dy*dy) < params.shipRadius + 10){ diamondsCollected++; diamondsTotal++; try{ localStorage.setItem('dttw_diamonds', diamondsTotal);}catch(e){}; diamondsEl.textContent='Алмазы: '+diamondsTotal; createDiamondParticles(d.x,d.y); beep(1200,0.05,'square'); diamonds.splice(j,1); } }
   }
 
   const dx = speed * dt;
   for(let s of tunnel) s.x -= dx;
   while(tunnel.length && tunnel[0].x < -params.segWidth) tunnel.shift();
-  while(tunnel.length < Math.ceil((W + 200)/params.segWidth)) spawnSegment();
+  while(tunnel.length < Math.ceil((W+200)/params.segWidth)) spawnSegment();
 
   for(let d of diamonds) d.x -= dx;
   diamonds = diamonds.filter(d => d.x > -20);
 
   score += dx * 0.1; scoreEl.textContent = Math.floor(score);
 
+  // collision detection
+  let i=0; let logicalShipX2 = params.shipX;
+  while(i < tunnel.length-1 && tunnel[i+1].x < logicalShipX2) i++;
+  const a=tunnel[i]||tunnel[0], b=tunnel[i+1]||a; const tt=(logicalShipX2 - a.x)/(b.x - a.x || 1);
+  const centerY = a.centerY + (b.centerY - a.centerY) * tt;
+  const gap = params.initialGap; const topY = centerY - gap/2; const botY = centerY + gap/2;
+
   if(!autopilotActive){
-    let i=0; while(i < tunnel.length-1 && tunnel[i+1].x < logicalShipX) i++;
-    const a=tunnel[i], b=tunnel[i+1]||a; const t=(logicalShipX - a.x)/(b.x - a.x || 1);
-    const centerY = a.centerY + (b.centerY - a.centerY) * t;
-    const gap = params.initialGap;
-    const topY = centerY - gap/2; const botY = centerY + gap/2;
-    if(!dead && (ship.y - params.shipRadius < topY || ship.y + params.shipRadius > botY)) die();
+    if(!dead && (ship.y - params.shipRadius < topY || ship.y + params.shipRadius > botY)){
+      if(shieldActive){
+        const hitTop = (ship.y - params.shipRadius < topY);
+        shieldTakeHit(hitTop);
+        if(hitTop) ship.y = topY + params.shipRadius + 4*scale;
+        else ship.y = botY - params.shipRadius - 4*scale;
+      } else {
+        die();
+      }
+    }
   }
-}
 
-function draw(){
-  // reset drawing state to avoid leaks from previous frames
-  ctx.save();
-  ctx.globalAlpha = 1;
-  ctx.globalCompositeOperation = 'source-over';
-  ctx.shadowBlur = 0;
-  ctx.shadowColor = 'transparent';
-
-  // background: flat for low, gradient otherwise
-  if(gfxSettings[gfxQuality].bgGradient){
-    const g = ctx.createLinearGradient(0,0,0,H);
-    g.addColorStop(0,'#060022'); g.addColorStop(0.6,'#160533'); g.addColorStop(1,'#081021');
-    ctx.fillStyle = g;
+  if(autopilotActive){
+    powerHud.textContent = 'Автопилот: ' + Math.ceil(Math.max(0,autopilotTime)) + 's';
   } else {
-    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--flat-low') || '#100030';
-  }
-  ctx.fillRect(0,0,W,H);
-  // clear shadow state explicitly after background
-  ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'; ctx.globalAlpha = 1;
-  ctx.restore();
-
-  // tunnel
-  ctx.strokeStyle = 'rgba(0,255,213,0.09)'; ctx.lineWidth = 2;
-  const lines = 8;
-  for(let j=0;j<lines;j++){
-    ctx.beginPath();
-    for(let i=0;i<tunnel.length;i++){
-      const baseOffset = (gfxQuality==='low') ? Math.sin(tunnelPhase + i*0.15 + j*0.25)*6
-        : (Math.sin(tunnelPhase + i*0.2 + j*0.3)*6 + Math.sin(tunnelPhase*0.5 + i*0.12 + j*0.2)*4);
-      const yTop = tunnel[i].centerY - params.initialGap/2 + baseOffset + j*2;
-      if(i===0) ctx.moveTo(tunnel[i].x, yTop); else ctx.lineTo(tunnel[i].x, yTop);
-    }
-    ctx.stroke();
-
-    ctx.beginPath();
-    for(let i=0;i<tunnel.length;i++){
-      const baseOffset = (gfxQuality==='low') ? Math.cos(tunnelPhase + i*0.15 + j*0.25)*6
-        : (Math.cos(tunnelPhase + i*0.2 + j*0.3)*6 + Math.cos(tunnelPhase*0.5 + i*0.12 + j*0.2)*4);
-      const yBot = tunnel[i].centerY + params.initialGap/2 + baseOffset + j*2;
-      if(i===0) ctx.moveTo(tunnel[i].x, yBot); else ctx.lineTo(tunnel[i].x, yBot);
-    }
-    ctx.stroke();
-  }
-
-  // particles
-  drawParticles();
-
-  // diamonds
-  for(let d of diamonds){
-    ctx.save(); ctx.translate(d.x, d.y);
-    if(gfxSettings[gfxQuality].diamondSpin) ctx.rotate((Date.now()%1000)/1000 * Math.PI * 2);
-    if(gfxSettings[gfxQuality].shadows){ ctx.shadowColor = 'rgba(255,215,0,0.6)'; ctx.shadowBlur = 12; } else { ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'; }
-    ctx.beginPath(); ctx.moveTo(0,-10*scale); ctx.lineTo(8*scale,0); ctx.lineTo(0,10*scale); ctx.lineTo(-8*scale,0); ctx.closePath();
-    ctx.fillStyle = 'gold'; ctx.fill();
-    ctx.restore();
-  }
-
-  // ship
-  if(!dead){
-    ctx.save(); ctx.translate(params.shipX, ship.y);
-    const angle = Math.max(-0.6, Math.min(0.6, -ship.vy / 600)); ctx.rotate(angle);
-    if(gfxSettings[gfxQuality].shadows){ ctx.shadowColor = 'rgba(0,255,213,0.25)'; ctx.shadowBlur = 20; } else { ctx.shadowBlur = 0; ctx.shadowColor = 'transparent'; }
-    ctx.beginPath(); ctx.moveTo(-14*scale,-10*scale); ctx.lineTo(16*scale,0); ctx.lineTo(-14*scale,10*scale); ctx.closePath();
-    ctx.fillStyle = 'rgba(0,255,213,0.95)'; ctx.fill();
-    ctx.beginPath(); ctx.moveTo(-6*scale,-6*scale); ctx.lineTo(10*scale,0); ctx.lineTo(-6*scale,6*scale); ctx.closePath();
-    ctx.fillStyle = 'rgba(255,45,149,0.9)'; ctx.fill();
-    ctx.restore();
+    updatePowerHud();
   }
 }
 
-/* main loop */
+/* Draw */
+function draw(){
+  // Расчет фазы волны на основе реального времени (Date.now()) для стабильной скорости
+  const globalTime = Date.now() / 1000;
+  wavePhase = globalTime * waveSpeed * 2.0; 
+  
+  ctx.save(); ctx.globalAlpha=1; ctx.globalCompositeOperation='source-over';
+  if(gfxSettings[gfxQuality].bgGradient){
+    const g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,'#060022'); g.addColorStop(0.6,'#160533'); g.addColorStop(1,'#081021'); ctx.fillStyle=g;
+  } else {
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--flat-low') || '#12002a';
+  }
+  ctx.fillRect(0,0,W,H); ctx.restore();
+
+  // waves/tunnel:
+  const lines = gfxSettings[gfxQuality].lines || 6;
+  const drawStep = 1; 
+  const lowOrMedium = (gfxQuality === 'low' || gfxQuality === 'medium'); // Оптимизация: Medium использует простую формулу волн
+  ctx.strokeStyle = 'rgba(0,255,213,0.09)'; ctx.lineWidth = 2;
+  for(let j=0;j<lines;j++){
+    ctx.beginPath();
+    for(let i=0;i<tunnel.length;i+=drawStep){
+      // Оптимизация волн: Medium использует простую формулу Low, чтобы снять нагрузку
+      const baseOffset = lowOrMedium
+        ? Math.sin(wavePhase*0.8 + i*0.10 + j*0.12) * 3
+        : Math.sin(wavePhase + i*0.18 + j*0.28)*6 + Math.sin(wavePhase*0.5 + i*0.1 + j*0.15)*4;
+      const yTop = tunnel[i].centerY - params.initialGap/2 + baseOffset + j*2;
+      if(i===0) ctx.moveTo(tunnel[i].x,yTop); else ctx.lineTo(tunnel[i].x,yTop);
+    }
+    ctx.stroke();
+
+    ctx.beginPath();
+    for(let i=0;i<tunnel.length;i+=drawStep){
+      // Оптимизация волн (cos)
+      const baseOffset = lowOrMedium
+        ? Math.cos(wavePhase*0.8 + i*0.10 + j*0.12) * 3
+        : Math.cos(wavePhase + i*0.18 + j*0.28)*6 + Math.cos(wavePhase*0.5 + i*0.1 + j*0.15)*4;
+      const yBot = tunnel[i].centerY + params.initialGap/2 + baseOffset + j*2;
+      if(i===0) ctx.moveTo(tunnel[i].x,yBot); else ctx.lineTo(tunnel[i].x,yBot);
+    }
+    ctx.stroke();
+  }
+
+  drawParticles();
+
+  for(let d of diamonds){
+    ctx.save(); ctx.translate(d.x,d.y); if(gfxSettings[gfxQuality].diamondSpin) ctx.rotate((Date.now()%1000)/1000 * Math.PI * 2);
+    // Оптимизация тени алмазов: уменьшаем blur для High
+    if(gfxSettings[gfxQuality].shadows){ 
+      ctx.shadowColor='rgba(255,215,0,0.6)'; 
+      ctx.shadowBlur= (gfxQuality === 'high' ? 8 : 12); 
+    } else { 
+      ctx.shadowBlur=0; ctx.shadowColor='transparent'; 
+    }
+    ctx.beginPath(); ctx.moveTo(0,-10*scale); ctx.lineTo(8*scale,0); ctx.lineTo(0,10*scale); ctx.lineTo(-8*scale,0); ctx.closePath(); ctx.fillStyle='gold'; ctx.fill(); ctx.restore();
+  }
+
+  if(!dead){
+    if(shieldActive){
+      ctx.save();
+      const pulseFactor = 1 + 0.15 * Math.sin(Date.now()/120) + (shieldPulse > 0 ? 0.25*(shieldPulse/0.36) : 0);
+      const radius = 20*scale * (1 + 0.06*(SHIELD_MAX - shieldCharges)) * pulseFactor;
+      ctx.beginPath(); ctx.arc(params.shipX, ship.y, radius, 0, Math.PI*2);
+      ctx.fillStyle = 'rgba(0,255,213,0.06)'; ctx.fill();
+      ctx.lineWidth = 2 + (shieldPulse > 0 ? 2 : 0);
+      ctx.strokeStyle = shieldPulse > 0 ? 'rgba(255,240,150,0.95)' : 'rgba(0,255,213,0.45)';
+      ctx.shadowColor = 'rgba(0,255,213,0.6)'; ctx.shadowBlur = shieldPulse > 0 ? 20 : 12;
+      ctx.stroke();
+      ctx.restore();
+      ctx.shadowBlur = 0; ctx.shadowColor='transparent';
+    }
+    ctx.save(); ctx.translate(params.shipX, ship.y);
+    const angle = Math.max(-0.6, Math.min(0.6, -ship.vy/600)); ctx.rotate(angle);
+    // Оптимизация тени корабля: уменьшаем blur для High
+    if(gfxSettings[gfxQuality].shadows){ 
+      ctx.shadowColor='rgba(0,255,213,0.25)'; 
+      ctx.shadowBlur= (gfxQuality === 'high' ? 12 : 20); 
+    } else { 
+      ctx.shadowBlur=0; ctx.shadowColor='transparent'; 
+    }
+    ctx.beginPath(); ctx.moveTo(-14*scale,-10*scale); ctx.lineTo(16*scale,0); ctx.lineTo(-14*scale,10*scale); ctx.closePath(); ctx.fillStyle='rgba(0,255,213,0.95)'; ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-6*scale,-6*scale); ctx.lineTo(10*scale,0); ctx.lineTo(-6*scale,6*scale); ctx.closePath(); ctx.fillStyle='rgba(255,45,149,0.9)'; ctx.fill();
+    ctx.restore();
+  }
+}
+
+/* RAF handlers */
 function loop(t){
   if(!lastTime) lastTime = t;
-  const dt = Math.min(0.033, (t-lastTime)/1000);
+  const dt = Math.min(0.04, (t - lastTime) / 1000);
   lastTime = t;
   update(dt);
   draw();
-  requestAnimationFrame(loop);
+  gameLoopId = requestAnimationFrame(loop);
+}
+function stopLoop(){
+  if(gameLoopId !== null){ cancelAnimationFrame(gameLoopId); gameLoopId = null; }
+  running = false;
+}
+function startGame(){
+  if(gameLoopId !== null) return;
+  running = true; paused = false; dead = false; lastTime = null;
+  updatePowerHud();
+  gameLoopId = requestAnimationFrame(loop);
 }
 
-/* utils & init */
+/* helpers */
 function clampTunnel(cy,gap){ return Math.max(gap/2+20, Math.min(H-gap/2-20, cy)); }
 function ensureTunnel(){ const segs=Math.ceil((W+200)/params.segWidth); if(tunnel.length===0){ let cy=centerOffset; for(let i=0;i<segs;i++){ let delta=0; if(i>2) delta=(Math.random()*2-1)*params.centerYDeltaMax; cy+=delta; cy=clampTunnel(cy, params.initialGap); tunnel.push({ x:i*params.segWidth, centerY:cy }); } } }
 ensureTunnel();
-reset();
 
-/* start loading flow */
+/* init */
+reset();
 window.addEventListener('load', ()=>{ if(gfxQuality==='auto') gfxQuality='auto'; showLoadingScreen(); });
 
 </script>
