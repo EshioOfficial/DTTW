@@ -19,14 +19,61 @@ canvas#c{display:block;border-radius:12px;box-shadow:0 18px 50px rgba(0,0,0,.65)
 .ui{position:fixed;left:14px;top:14px;font-weight:700;letter-spacing:1px;text-shadow:0 0 10px rgba(0,255,213,.08);z-index:3}
 .ui .score{font-size:18px;color:var(--neon-cyan);display:block;font-family:Orbitron,Share Tech Mono,monospace}
 .ui .small{font-size:12px;color:var(--muted);font-weight:600}
-.centerMsg{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;z-index:60}
+.centerMsg{position:fixed;left:50%;top:50%;transform:translate(-50%,-50%);text-align:center;z-index:60;max-width:92vw}
 button.primary{background:linear-gradient(90deg,var(--neon-pink),var(--neon-cyan));border:none;color:#031018;padding:10px 16px;border-radius:12px;font-weight:900;cursor:pointer;margin:6px 0;box-shadow:0 6px 16px rgba(139,92,255,.12)}
 .footerNote{position:fixed;right:14px;bottom:10px;color:var(--muted);font-size:12px;z-index:3}
 .scanlines{pointer-events:none;position:fixed;left:0;top:0;width:100%;height:100%;mix-blend-mode:overlay;z-index:5}
 .scanlines::after{content:"";position:absolute;left:0;top:0;width:100%;height:100%;background:repeating-linear-gradient(0deg,rgba(0,0,0,0.03) 0,rgba(255,255,255,0.02) 2px);opacity:0.16}
 .shield-icon{width:14px;height:14px;border-radius:50%;display:inline-block;margin-right:6px;vertical-align:middle}
 .power-hud{margin-top:6px}
-@media (max-width:600px){ .ui .score{font-size:16px} button.primary{padding:8px 12px} }
+.danger{background:linear-gradient(90deg,#ff6b6b,#ff2d95);border:none;color:#031018;padding:10px 16px;border-radius:12px;font-weight:900;cursor:pointer;margin:6px 0}
+.ach-new-indicator{display:inline-block;margin-left:8px;font-size:12px;color:var(--neon-pink)}
+/* Carousel styles */
+#achCarousel {
+  display:flex;
+  overflow-x:auto;
+  scroll-snap-type:x mandatory;
+  -webkit-overflow-scrolling:touch;
+  gap:16px;
+  padding:12px;
+  width:100%;
+  box-sizing:border-box;
+}
+#achCarousel::-webkit-scrollbar { height:8px; }
+#achCarousel::-webkit-scrollbar-thumb { background:linear-gradient(90deg,var(--neon-pink),var(--neon-cyan)); border-radius:8px; }
+#achCarousel::-webkit-scrollbar-track { background: rgba(255,255,255,0.02); border-radius:8px; }
+.achievement-card {
+  scroll-snap-align:center;
+  flex:0 0 78%;
+  max-width:760px;
+  background: rgba(255,255,255,0.03);
+  border-radius:12px;
+  padding:18px;
+  box-sizing:border-box;
+  border:1px solid rgba(255,255,255,0.06);
+  min-height:120px;
+  display:flex;
+  flex-direction:column;
+  justify-content:center;
+  align-items:center;
+  transition:transform .28s ease, box-shadow .28s ease;
+}
+.achievement-card .title { font-size:18px; font-weight:800; margin-bottom:6px; }
+.achievement-card .desc { font-size:13px; color:var(--muted); text-align:center; max-width:90%; }
+.achievement-card.unlocked { border-color:var(--neon-cyan); box-shadow:0 8px 32px rgba(0,255,213,0.08); }
+.achievement-card.unlocked .title { color:var(--neon-cyan); }
+.achievement-card.locked .title { color:var(--muted); }
+@media (min-width:900px){
+  .achievement-card { flex:0 0 48%; max-width:520px; }
+}
+@media (min-width:1200px){
+  .achievement-card { flex:0 0 32%; max-width:420px; }
+}
+@media (max-width:600px){
+  .achievement-card { flex:0 0 92%; max-width:92%; padding:14px; min-height:110px; }
+  .achievement-card .title{ font-size:16px; }
+  .centerMsg{padding:8px}
+}
 </style>
 </head>
 <body>
@@ -41,11 +88,11 @@ button.primary{background:linear-gradient(90deg,var(--neon-pink),var(--neon-cyan
 
 <div class="centerMsg" id="overlay" style="display:none"></div>
 
-<div class="footerNote">ver.Alpha 0.3 Retrowave Edition. </div>
+<div class="footerNote">ver.Alpha 0.4 Retrowave Edition. </div>
 <div class="scanlines"></div>
 
 <script>
-/* Final v2.2 — shield + smooth waves + stable RAF */
+/* Full game + achievements carousel */
 const canvas = document.getElementById('c'), ctx = canvas.getContext('2d');
 let W=0,H=0,scale=1,centerOffset=0;
 
@@ -89,6 +136,93 @@ function beep(freq,time=0.06,type='sine'){ if(!audioCtx) return; const o=audioCt
 try{ best = Number(localStorage.getItem('dttw_best')||0); bestEl.textContent='Best: '+best;}catch(e){}
 try{ diamondsTotal = Number(localStorage.getItem('dttw_diamonds')||0); diamondsEl.textContent='Алмазы: '+diamondsTotal;}catch(e){}
 
+/* === Achievements System === */
+const achievements = {
+  firstFlight: { name: "Первый полёт", desc: "Начни игру впервые", unlocked: false },
+  hundredPoints: { name: "Первые 100 очков", desc: "Набери 100 очков", unlocked: false },
+  diamond10: { name: "Коллекционер", desc: "Собери 10 алмазов в одной игре", unlocked: false },
+  diamond100: { name: "Ювелир", desc: "Собери 100 алмазов за всё время", unlocked: false },
+  autopilotUsed: { name: "Пилот-бот", desc: "Используй автопилот", unlocked: false },
+  shieldUsed: { name: "Под защитой", desc: "Активируй силовое поле", unlocked: false },
+  best1000: { name: "Пилот ас", desc: "Установи рекорд 1000+", unlocked: false }
+};
+let newAchUnlocked = false;
+
+try {
+  const savedAch = JSON.parse(localStorage.getItem('dttw_achievements') || '{}');
+  for (let k in achievements) {
+    if (savedAch[k]?.unlocked) achievements[k].unlocked = true;
+  }
+} catch(e){}
+
+function saveAchievements() {
+  try {
+    localStorage.setItem('dttw_achievements', JSON.stringify(achievements));
+  } catch(e){}
+}
+
+function unlockAchievement(key) {
+  const a = achievements[key];
+  if (!a || a.unlocked) return;
+  a.unlocked = true;
+  newAchUnlocked = true;
+  saveAchievements();
+
+  // popup
+  const note = document.createElement('div');
+  note.style.cssText = `
+    position:fixed;left:50%;bottom:10%;
+    transform:translateX(-50%);
+    background:rgba(8,16,33,0.95);
+    border:1px solid var(--neon-cyan);
+    padding:10px 16px;
+    border-radius:12px;
+    color:var(--neon-cyan);
+    font-family:'Share Tech Mono',monospace;
+    z-index:300;
+    text-align:center;
+    box-shadow:0 0 14px rgba(0,255,213,0.3);
+  `;
+  note.innerHTML = `<div style="color:var(--neon-pink);font-weight:700">Достижение!</div>
+                    <div style="margin-top:6px;font-weight:700">${a.name}</div>
+                    <div style="font-size:12px;color:var(--muted);margin-top:4px">${a.desc}</div>`;
+  document.body.appendChild(note);
+
+  // update progress bar if open
+  setTimeout(()=>{ 
+    const bar = document.querySelector('#achievementsProgressBar');
+    if (bar) {
+      const total = Object.keys(achievements).length;
+      const unlocked = Object.values(achievements).filter(x=>x.unlocked).length;
+      const p = Math.floor((unlocked/total)*100);
+      bar.style.width = p + '%';
+    }
+  }, 60);
+
+  setTimeout(()=>{ note.style.transition='opacity .6s'; note.style.opacity=0;
+    setTimeout(()=>note.remove(),600);
+  }, 2200);
+}
+
+/* === Player Stats === */
+const stats = {
+  gamesPlayed: 0,
+  totalScore: 0,
+  totalTime: 0,
+  deaths: 0,
+  diamondCollected: 0,
+  bestScores: [], // для графика (макс. 10 последних)
+};
+
+try {
+  const savedStats = JSON.parse(localStorage.getItem('dttw_stats') || '{}');
+  if (savedStats) Object.assign(stats, savedStats);
+} catch(e){}
+
+function saveStats() {
+  try { localStorage.setItem('dttw_stats', JSON.stringify(stats)); } catch(e){}
+}
+
 /* responsive */
 function resize(){
   W = canvas.width = Math.max(360, Math.min(window.innerWidth,1400));
@@ -119,9 +253,9 @@ let gfxQuality = localStorage.getItem('dttw_gfx') || 'auto';
 let recommendedQuality = null;
 let gfxDetected = 'high';
 const gfxSettings = {
-  high:   { particles:true, shadows:true, waves:true, diamondSpin:true, bgGradient:true, maxParticles:280, lines:8, iStep:1 },
-  medium: { particles:true, shadows:false, waves:true, diamondSpin:true, bgGradient:true, maxParticles:150, lines:6, iStep:1 },
-  low:    { particles:true, shadows:false, waves:true, diamondSpin:false, bgGradient:false, maxParticles:80, lines:4, iStep:3 }
+  high:   { particles:true, shadows:true, waves:true, diamondSpin:true, bgGradient:true, maxParticles:280, lines:8, iStep:1 },
+  medium: { particles:true, shadows:false, waves:true, diamondSpin:true, bgGradient:true, maxParticles:150, lines:6, iStep:1 },
+  low:    { particles:true, shadows:false, waves:true, diamondSpin:false, bgGradient:false, maxParticles:80, lines:4, iStep:3 }
 };
 function detectByHardware(){
   const cores = navigator.hardwareConcurrency || 2;
@@ -166,16 +300,22 @@ function showLoadingScreen(){
 /* Menus */
 function showMainMenu(){
   overlay.style.display='block';
+  const achIndicator = newAchUnlocked ? '<span class="ach-new-indicator">•</span>' : '';
   overlay.innerHTML = `<h1 style="margin:0 0 12px;font-family:Orbitron,Share Tech Mono,monospace;color:var(--neon-pink);text-shadow:0 0 20px rgba(255,45,149,.2)">Don't Touch The Wall</h1>
     <div class="small" style="margin-bottom:10px;color:var(--muted)">Tap / Click / Space — flap · Esc — pause</div>
     <div style="display:flex;flex-direction:column;align-items:center">
       <button class="primary" id="startBtn">Играть</button>
       <button class="primary" id="boostersBtn">Бустеры</button>
+      <button class="primary" id="achievementsBtn">Достижения ${achIndicator}</button>
+      <button class="primary" id="statsBtn">Статистика</button>
       <button class="primary" id="graphicsBtn">Графика</button>
     </div>`;
   document.getElementById('startBtn').addEventListener('click', ()=>{ overlay.style.display='none'; reset(); startGame(); }, {once:true});
   document.getElementById('boostersBtn').addEventListener('click', showBoostersMenu);
   document.getElementById('graphicsBtn').addEventListener('click', showGraphicsMenu);
+  document.getElementById('achievementsBtn').addEventListener('click', showAchievementsMenu);
+  document.getElementById('statsBtn').addEventListener('click', showStatsMenu);
+  newAchUnlocked = false; // сброс индикатора при открытии меню
 }
 
 function showBoostersMenu(){
@@ -239,7 +379,6 @@ function notify(t){ const n=document.createElement('div'); n.style.cssText='posi
 function applyAuto(){ detectByHardware(); probeFPS((fps)=>{ let rec=gfxDetected; if(fps<35) rec='low'; else if(fps<55) rec='medium'; else rec='high'; const ua=navigator.userAgent||''; if(/Mobile|Android|iPhone|iPad/i.test(ua)){ if(rec==='high') rec='medium'; else if(rec==='medium') rec='low'; } recommendedQuality = rec; if(gfxQuality==='auto') gfxQuality = recommendedQuality; try{ localStorage.setItem('dttw_gfx',gfxQuality);}catch(e){}; notify((recommendedQuality==='low'?'Низкая':recommendedQuality==='medium'?'Средняя':'Высокая')); updateGfxLabels(); }); }
 
 /* Boosters: autopilot and shield */
-/* IMPORTANT: for shield, ensure activation happens AFTER reset when starting from menu */
 function activateAutopilot(){
   if(shieldActive){ alert('Деактивируйте щит сначала.'); return; }
   if(diamondsTotal < 50){ alert('Недостаточно алмазов'); return; }
@@ -247,6 +386,7 @@ function activateAutopilot(){
   autopilotActive = true; autopilotTime = AUTOPILOT_DURATION; autopilotOscillationPhase = 0;
   overlay.style.display='none';
   if(!running){ reset(); startGame(); } else updatePowerHud();
+  unlockAchievement('autopilotUsed');
 }
 
 function activateShield(){
@@ -258,10 +398,8 @@ function activateShield(){
   try{ localStorage.setItem('dttw_diamonds', diamondsTotal);}catch(e){}
   diamondsEl.textContent='Алмазы: '+diamondsTotal;
 
-  // If game not running, reset first, then enable shield (to avoid reset clearing it)
   if(!running){
     reset();
-    // enable shield AFTER reset
     shieldActive = true;
     shieldCharges = SHIELD_MAX;
     shieldPulse = 0;
@@ -273,14 +411,7 @@ function activateShield(){
     overlay.style.display='none';
     updatePowerHud();
   }
-}
-
-/* clear shield helper */
-function clearShield(){
-  shieldActive = false;
-  shieldCharges = 0;
-  shieldPulse = 0;
-  updatePowerHud();
+  unlockAchievement('shieldUsed');
 }
 
 /* shield hit + bounce */
@@ -349,8 +480,6 @@ function reset(){
     cy += delta; cy = clampTunnel(cy, params.initialGap); tunnel.push({ x: i*params.segWidth, centerY: cy });
   }
   ctx.globalAlpha=1; ctx.shadowBlur=0; ctx.shadowColor='transparent';
-  // DO NOT clear shield here — shield activation should survive if set AFTER reset.
-  // clearShield(); <-- intentionally not called
 }
 
 /* spawn */
@@ -368,12 +497,22 @@ function spawnSegment(){
 }
 
 /* die */
+let gameStartTime = 0;
 function die(){
   if(dead) return;
   createExplosion(params.shipX, ship.y, 'rgba(0,255,213,0.95)');
   dead = true; running = false;
   stopLoop();
   beep(120,0.6,'sawtooth');
+
+  // update stats
+  stats.deaths++;
+  stats.totalScore += Math.floor(score);
+  if (gameStartTime) stats.totalTime += Math.floor((Date.now() - gameStartTime) / 1000);
+  stats.bestScores.push(Math.floor(score));
+  if (stats.bestScores.length > 10) stats.bestScores.shift();
+  saveStats();
+
   overlay.style.display='block';
   overlay.innerHTML = `<h2 style="margin:0 0 12px;color:var(--neon-pink)">Game Over</h2>
     <div class="small" style="margin-bottom:14px;color:var(--muted)">Score: ${Math.floor(score)}</div>
@@ -382,10 +521,13 @@ function die(){
     <button class="primary" id="boostersAfterBtn">Бустеры</button>
     <div style="height:8px"></div>
     <div class="small">Best: ${best}</div>`;
+
   document.getElementById('tryBtn').addEventListener('click', ()=>{ overlay.style.display='none'; reset(); startGame(); }, {once:true});
   document.getElementById('boostersAfterBtn').addEventListener('click', showBoostersMenu);
   if(Math.floor(score) > best){ best = Math.floor(score); try{ localStorage.setItem('dttw_best', best);}catch(e){} }
   bestEl.textContent = 'Best: ' + best;
+
+  if (best >= 1000) unlockAchievement('best1000');
 }
 
 /* Particles */
@@ -422,9 +564,6 @@ function drawParticles(){
 
 /* Update with delta-time */
 function update(dt){
-  // wave uses dt => smooth independent of FPS
-  // for low gfx, we'll slow waveSpeed and amplitude below in draw
-
   particles = updateParticles(dt, particles);
   diamondParticles = updateParticles(dt, diamondParticles);
 
@@ -445,14 +584,14 @@ function update(dt){
 
     for(let j=diamonds.length-1;j>=0;j--){ const d=diamonds[j]; const dx=d.x-logicalShipX; const dy=d.y-ship.y; const dist=Math.sqrt(dx*dx+dy*dy);
       if(dist < ATTRACT_RADIUS){ d.x += -dx * dt * 15; d.y += -dy * dt * 15; }
-      if(dist < params.shipRadius + 10){ diamondsCollected++; diamondsTotal++; try{ localStorage.setItem('dttw_diamonds', diamondsTotal);}catch(e){}; diamondsEl.textContent='Алмазы: '+diamondsTotal; createDiamondParticles(d.x,d.y); beep(1200,0.05,'square'); diamonds.splice(j,1); }
+      if(dist < params.shipRadius + 10){ diamondsCollected++; diamondsTotal++; stats.diamondCollected++; try{ localStorage.setItem('dttw_diamonds', diamondsTotal);}catch(e){}; diamondsEl.textContent='Алмазы: '+diamondsTotal; createDiamondParticles(d.x,d.y); beep(1200,0.05,'square'); diamonds.splice(j,1); }
     }
     autopilotTime -= dt; if(autopilotTime <= 0) autopilotActive = false;
     updatePowerHud();
   } else {
     ship.vy += params.gravity * dt; ship.vy = Math.min(ship.vy, params.maxFallSpeed); ship.y += ship.vy * dt;
     speed = params.baseSpeed + Math.floor(score/100) * params.speedIncrease;
-    for(let j=diamonds.length-1;j>=0;j--){ const d=diamonds[j]; const dx=d.x-logicalShipX; const dy=d.y-ship.y; if(Math.sqrt(dx*dx+dy*dy) < params.shipRadius + 10){ diamondsCollected++; diamondsTotal++; try{ localStorage.setItem('dttw_diamonds', diamondsTotal);}catch(e){}; diamondsEl.textContent='Алмазы: '+diamondsTotal; createDiamondParticles(d.x,d.y); beep(1200,0.05,'square'); diamonds.splice(j,1); } }
+    for(let j=diamonds.length-1;j>=0;j--){ const d=diamonds[j]; const dx=d.x-logicalShipX; const dy=d.y-ship.y; if(Math.sqrt(dx*dx+dy*dy) < params.shipRadius + 10){ diamondsCollected++; diamondsTotal++; stats.diamondCollected++; try{ localStorage.setItem('dttw_diamonds', diamondsTotal);}catch(e){}; diamondsEl.textContent='Алмазы: '+diamondsTotal; createDiamondParticles(d.x,d.y); beep(1200,0.05,'square'); diamonds.splice(j,1); } }
   }
 
   const dx = speed * dt;
@@ -464,6 +603,11 @@ function update(dt){
   diamonds = diamonds.filter(d => d.x > -20);
 
   score += dx * 0.1; scoreEl.textContent = Math.floor(score);
+
+  // achievements checks
+  if (!achievements.hundredPoints.unlocked && score >= 100) unlockAchievement('hundredPoints');
+  if (!achievements.diamond10.unlocked && diamondsCollected >= 10) unlockAchievement('diamond10');
+  if (!achievements.diamond100.unlocked && diamondsTotal >= 100) unlockAchievement('diamond100');
 
   // collision detection
   let i=0; let logicalShipX2 = params.shipX;
@@ -494,88 +638,83 @@ function update(dt){
 
 /* Draw */
 function draw(){
-  // Расчет фазы волны на основе реального времени (Date.now()) для стабильной скорости
-  const globalTime = Date.now() / 1000;
-  wavePhase = globalTime * waveSpeed * 2.0; 
-  
-  ctx.save(); ctx.globalAlpha=1; ctx.globalCompositeOperation='source-over';
-  if(gfxSettings[gfxQuality].bgGradient){
-    const g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,'#060022'); g.addColorStop(0.6,'#160533'); g.addColorStop(1,'#081021'); ctx.fillStyle=g;
-  } else {
-    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--flat-low') || '#12002a';
-  }
-  ctx.fillRect(0,0,W,H); ctx.restore();
+  const globalTime = Date.now() / 1000;
+  wavePhase = globalTime * waveSpeed * 2.0; 
 
-  // waves/tunnel:
-  const lines = gfxSettings[gfxQuality].lines || 6;
-  const drawStep = 1; 
-  const lowOrMedium = (gfxQuality === 'low' || gfxQuality === 'medium'); // Оптимизация: Medium использует простую формулу волн
-  ctx.strokeStyle = 'rgba(0,255,213,0.09)'; ctx.lineWidth = 2;
-  for(let j=0;j<lines;j++){
-    ctx.beginPath();
-    for(let i=0;i<tunnel.length;i+=drawStep){
-      // Оптимизация волн: Medium использует простую формулу Low, чтобы снять нагрузку
-      const baseOffset = lowOrMedium
-        ? Math.sin(wavePhase*0.8 + i*0.10 + j*0.12) * 3
-        : Math.sin(wavePhase + i*0.18 + j*0.28)*6 + Math.sin(wavePhase*0.5 + i*0.1 + j*0.15)*4;
-      const yTop = tunnel[i].centerY - params.initialGap/2 + baseOffset + j*2;
-      if(i===0) ctx.moveTo(tunnel[i].x,yTop); else ctx.lineTo(tunnel[i].x,yTop);
-    }
-    ctx.stroke();
+  ctx.save(); ctx.globalAlpha=1; ctx.globalCompositeOperation='source-over';
+  if(gfxSettings[gfxQuality].bgGradient){
+    const g=ctx.createLinearGradient(0,0,0,H); g.addColorStop(0,'#060022'); g.addColorStop(0.6,'#160533'); g.addColorStop(1,'#081021'); ctx.fillStyle=g;
+  } else {
+    ctx.fillStyle = getComputedStyle(document.documentElement).getPropertyValue('--flat-low') || '#12002a';
+  }
+  ctx.fillRect(0,0,W,H); ctx.restore();
 
-    ctx.beginPath();
-    for(let i=0;i<tunnel.length;i+=drawStep){
-      // Оптимизация волн (cos)
-      const baseOffset = lowOrMedium
-        ? Math.cos(wavePhase*0.8 + i*0.10 + j*0.12) * 3
-        : Math.cos(wavePhase + i*0.18 + j*0.28)*6 + Math.cos(wavePhase*0.5 + i*0.1 + j*0.15)*4;
-      const yBot = tunnel[i].centerY + params.initialGap/2 + baseOffset + j*2;
-      if(i===0) ctx.moveTo(tunnel[i].x,yBot); else ctx.lineTo(tunnel[i].x,yBot);
-    }
-    ctx.stroke();
-  }
+  // waves/tunnel:
+  const lines = gfxSettings[gfxQuality].lines || 6;
+  const drawStep = 1; 
+  const lowOrMedium = (gfxQuality === 'low' || gfxQuality === 'medium'); // Оптимизация: Medium использует простую формулу волн
+  ctx.strokeStyle = 'rgba(0,255,213,0.09)'; ctx.lineWidth = 2;
+  for(let j=0;j<lines;j++){
+    ctx.beginPath();
+    for(let i=0;i<tunnel.length;i+=drawStep){
+      const baseOffset = lowOrMedium
+        ? Math.sin(wavePhase*0.8 + i*0.10 + j*0.12) * 3
+        : Math.sin(wavePhase + i*0.18 + j*0.28)*6 + Math.sin(wavePhase*0.5 + i*0.1 + j*0.15)*4;
+      const yTop = tunnel[i].centerY - params.initialGap/2 + baseOffset + j*2;
+      if(i===0) ctx.moveTo(tunnel[i].x,yTop); else ctx.lineTo(tunnel[i].x,yTop);
+    }
+    ctx.stroke();
 
-  drawParticles();
+    ctx.beginPath();
+    for(let i=0;i<tunnel.length;i+=drawStep){
+      const baseOffset = lowOrMedium
+        ? Math.cos(wavePhase*0.8 + i*0.10 + j*0.12) * 3
+        : Math.cos(wavePhase + i*0.18 + j*0.28)*6 + Math.cos(wavePhase*0.5 + i*0.1 + j*0.15)*4;
+      const yBot = tunnel[i].centerY + params.initialGap/2 + baseOffset + j*2;
+      if(i===0) ctx.moveTo(tunnel[i].x,yBot); else ctx.lineTo(tunnel[i].x,yBot);
+    }
+    ctx.stroke();
+  }
 
-  for(let d of diamonds){
-    ctx.save(); ctx.translate(d.x,d.y); if(gfxSettings[gfxQuality].diamondSpin) ctx.rotate((Date.now()%1000)/1000 * Math.PI * 2);
-    // Оптимизация тени алмазов: уменьшаем blur для High
-    if(gfxSettings[gfxQuality].shadows){ 
-      ctx.shadowColor='rgba(255,215,0,0.6)'; 
-      ctx.shadowBlur= (gfxQuality === 'high' ? 8 : 12); 
-    } else { 
-      ctx.shadowBlur=0; ctx.shadowColor='transparent'; 
-    }
-    ctx.beginPath(); ctx.moveTo(0,-10*scale); ctx.lineTo(8*scale,0); ctx.lineTo(0,10*scale); ctx.lineTo(-8*scale,0); ctx.closePath(); ctx.fillStyle='gold'; ctx.fill(); ctx.restore();
-  }
+  drawParticles();
 
-  if(!dead){
-    if(shieldActive){
-      ctx.save();
-      const pulseFactor = 1 + 0.15 * Math.sin(Date.now()/120) + (shieldPulse > 0 ? 0.25*(shieldPulse/0.36) : 0);
-      const radius = 20*scale * (1 + 0.06*(SHIELD_MAX - shieldCharges)) * pulseFactor;
-      ctx.beginPath(); ctx.arc(params.shipX, ship.y, radius, 0, Math.PI*2);
-      ctx.fillStyle = 'rgba(0,255,213,0.06)'; ctx.fill();
-      ctx.lineWidth = 2 + (shieldPulse > 0 ? 2 : 0);
-      ctx.strokeStyle = shieldPulse > 0 ? 'rgba(255,240,150,0.95)' : 'rgba(0,255,213,0.45)';
-      ctx.shadowColor = 'rgba(0,255,213,0.6)'; ctx.shadowBlur = shieldPulse > 0 ? 20 : 12;
-      ctx.stroke();
-      ctx.restore();
-      ctx.shadowBlur = 0; ctx.shadowColor='transparent';
-    }
-    ctx.save(); ctx.translate(params.shipX, ship.y);
-    const angle = Math.max(-0.6, Math.min(0.6, -ship.vy/600)); ctx.rotate(angle);
-    // Оптимизация тени корабля: уменьшаем blur для High
-    if(gfxSettings[gfxQuality].shadows){ 
-      ctx.shadowColor='rgba(0,255,213,0.25)'; 
-      ctx.shadowBlur= (gfxQuality === 'high' ? 12 : 20); 
-    } else { 
-      ctx.shadowBlur=0; ctx.shadowColor='transparent'; 
-    }
-    ctx.beginPath(); ctx.moveTo(-14*scale,-10*scale); ctx.lineTo(16*scale,0); ctx.lineTo(-14*scale,10*scale); ctx.closePath(); ctx.fillStyle='rgba(0,255,213,0.95)'; ctx.fill();
-    ctx.beginPath(); ctx.moveTo(-6*scale,-6*scale); ctx.lineTo(10*scale,0); ctx.lineTo(-6*scale,6*scale); ctx.closePath(); ctx.fillStyle='rgba(255,45,149,0.9)'; ctx.fill();
-    ctx.restore();
-  }
+  for(let d of diamonds){
+    ctx.save(); ctx.translate(d.x,d.y); if(gfxSettings[gfxQuality].diamondSpin) ctx.rotate((Date.now()%1000)/1000 * Math.PI * 2);
+    if(gfxSettings[gfxQuality].shadows){ 
+      ctx.shadowColor='rgba(255,215,0,0.6)'; 
+      ctx.shadowBlur= (gfxQuality === 'high' ? 8 : 12); 
+    } else { 
+      ctx.shadowBlur=0; ctx.shadowColor='transparent'; 
+    }
+    ctx.beginPath(); ctx.moveTo(0,-10*scale); ctx.lineTo(8*scale,0); ctx.lineTo(0,10*scale); ctx.lineTo(-8*scale,0); ctx.closePath(); ctx.fillStyle='gold'; ctx.fill(); ctx.restore();
+  }
+
+  if(!dead){
+    if(shieldActive){
+      ctx.save();
+      const pulseFactor = 1 + 0.15 * Math.sin(Date.now()/120) + (shieldPulse > 0 ? 0.25*(shieldPulse/0.36) : 0);
+      const radius = 20*scale * (1 + 0.06*(SHIELD_MAX - shieldCharges)) * pulseFactor;
+      ctx.beginPath(); ctx.arc(params.shipX, ship.y, radius, 0, Math.PI*2);
+      ctx.fillStyle = 'rgba(0,255,213,0.06)'; ctx.fill();
+      ctx.lineWidth = 2 + (shieldPulse > 0 ? 2 : 0);
+      ctx.strokeStyle = shieldPulse > 0 ? 'rgba(255,240,150,0.95)' : 'rgba(0,255,213,0.45)';
+      ctx.shadowColor = 'rgba(0,255,213,0.6)'; ctx.shadowBlur = shieldPulse > 0 ? 20 : 12;
+      ctx.stroke();
+      ctx.restore();
+      ctx.shadowBlur = 0; ctx.shadowColor='transparent';
+    }
+    ctx.save(); ctx.translate(params.shipX, ship.y);
+    const angle = Math.max(-0.6, Math.min(0.6, -ship.vy/600)); ctx.rotate(angle);
+    if(gfxSettings[gfxQuality].shadows){ 
+      ctx.shadowColor='rgba(0,255,213,0.25)'; 
+      ctx.shadowBlur= (gfxQuality === 'high' ? 12 : 20); 
+    } else { 
+      ctx.shadowBlur=0; ctx.shadowColor='transparent'; 
+    }
+    ctx.beginPath(); ctx.moveTo(-14*scale,-10*scale); ctx.lineTo(16*scale,0); ctx.lineTo(-14*scale,10*scale); ctx.closePath(); ctx.fillStyle='rgba(0,255,213,0.95)'; ctx.fill();
+    ctx.beginPath(); ctx.moveTo(-6*scale,-6*scale); ctx.lineTo(10*scale,0); ctx.lineTo(-6*scale,6*scale); ctx.closePath(); ctx.fillStyle='rgba(255,45,149,0.9)'; ctx.fill();
+    ctx.restore();
+  }
 }
 
 /* RAF handlers */
@@ -595,6 +734,11 @@ function startGame(){
   if(gameLoopId !== null) return;
   running = true; paused = false; dead = false; lastTime = null;
   updatePowerHud();
+  // stats
+  stats.gamesPlayed++;
+  saveStats();
+  gameStartTime = Date.now();
+  unlockAchievement('firstFlight');
   gameLoopId = requestAnimationFrame(loop);
 }
 
@@ -602,6 +746,158 @@ function startGame(){
 function clampTunnel(cy,gap){ return Math.max(gap/2+20, Math.min(H-gap/2-20, cy)); }
 function ensureTunnel(){ const segs=Math.ceil((W+200)/params.segWidth); if(tunnel.length===0){ let cy=centerOffset; for(let i=0;i<segs;i++){ let delta=0; if(i>2) delta=(Math.random()*2-1)*params.centerYDeltaMax; cy+=delta; cy=clampTunnel(cy, params.initialGap); tunnel.push({ x:i*params.segWidth, centerY:cy }); } } }
 ensureTunnel();
+
+/* Achievements carousel & Stats menu */
+function showAchievementsMenu(){
+  overlay.style.display='block';
+  const totalAch = Object.keys(achievements).length;
+  const unlockedAch = Object.values(achievements).filter(a => a.unlocked).length;
+  const percent = Math.floor((unlockedAch / totalAch) * 100);
+
+  // 🔹 Вернул исходный крупный заголовок
+  let html = `<h2 style="color:var(--neon-cyan);margin-bottom:12px;font-size:24px;">Достижения</h2>`;
+  
+  html += `
+    <div style="width:100%;max-width:320px;margin:0 auto 6px auto;text-align:left">
+      <div style="margin-bottom:4px;color:var(--muted);font-size:12px">
+        Прогресс: ${unlockedAch}/${totalAch} (${percent}%)
+      </div>
+      <div style="background:rgba(255,255,255,0.05);border:1px solid var(--neon-cyan);
+                  border-radius:6px;height:8px;overflow:hidden;">
+        <div id="achievementsProgressBar" style="height:100%;width:${percent}%;
+                    background:linear-gradient(90deg,var(--neon-pink),var(--neon-cyan));
+                    transition:width .5s ease"></div>
+      </div>
+    </div>
+  `;
+
+  html += `<div style="text-align:center;color:var(--muted);font-size:12px;margin-bottom:6px">
+    Листай вверх/вниз для просмотра достижений
+  </div>`;
+
+  html += `<div id="achievementsContainer" style="max-height:160px; overflow:hidden; position:relative; cursor:pointer;">`;
+  html += `<div id="achievementsInner" style="transition: transform 0.3s ease;">`;
+
+  for (let key in achievements){
+    const a = achievements[key];
+    html += `
+      <div class="achSlide" style="height:90px; display:flex; flex-direction:column; justify-content:center; text-align:center; 
+           color:${a.unlocked?'var(--neon-cyan)':'var(--muted)'}; font-weight:600; font-size:13px; 
+           border-bottom:1px solid var(--neon-cyan); padding:4px;">
+        <div>${a.name} ${a.unlocked?'✅':''}</div>
+        <div style="font-size:11px;color:${a.unlocked?'#aaa':'#555'}">${a.desc}</div>
+      </div>`;
+  }
+
+  html += `</div></div>`;
+  html += `<div style="height:8px"></div><button class="primary" id="achBack">Назад</button>`;
+
+  overlay.innerHTML = html;
+
+  const inner = document.getElementById('achievementsInner');
+  const slides = document.querySelectorAll('.achSlide');
+  const slideHeight = 90;
+  let currentIndex = 0;
+
+  function clampIndex(index){
+    if(index < 0) return 0;
+    if(index >= slides.length) return slides.length - 1;
+    return index;
+  }
+
+  function updatePosition(){
+    inner.style.transform = `translateY(-${currentIndex * slideHeight}px)`;
+  }
+
+  const container = document.getElementById('achievementsContainer');
+  container.addEventListener('wheel', e=>{
+    e.preventDefault();
+    if(e.deltaY > 0) currentIndex = clampIndex(currentIndex + 1);
+    else if(e.deltaY < 0) currentIndex = clampIndex(currentIndex - 1);
+    updatePosition();
+  });
+
+  // свайп пальцем
+  let startY = null;
+  container.addEventListener('touchstart', e=>{ startY = e.touches[0].clientY; });
+  container.addEventListener('touchmove', e=>{
+    if(startY === null) return;
+    let diff = startY - e.touches[0].clientY;
+    if(Math.abs(diff) > 10){
+      if(diff > 0) currentIndex = clampIndex(currentIndex + 1);
+      else currentIndex = clampIndex(currentIndex - 1);
+      updatePosition();
+      startY = e.touches[0].clientY;
+    }
+  });
+
+  document.getElementById('achBack').addEventListener('click', showMainMenu, {once:true});
+  newAchUnlocked = false;
+}
+
+
+function generateScoreGraph(scores){
+  if (!scores || !scores.length) return `<div style="color:var(--muted);font-size:11px">Пока нет данных</div>`;
+  
+  const maxScore = Math.max(...scores);
+  let bars = '';
+  
+  scores.forEach(s=>{
+    const h = Math.max(3, (s / maxScore) * 50); // высота 3–50px
+    bars += `<div style="
+      width:10px;                  /* уже меньше */
+      height:${h}px;
+      background:linear-gradient(180deg,var(--neon-cyan),var(--neon-pink));
+      margin:0 3px;                /* меньший отступ */
+      border-radius:4px 4px 0 0;
+      box-shadow:0 0 5px rgba(0,255,213,0.3);
+    " title="${s}"></div>`;
+  });
+  
+  return `<div style="display:flex;justify-content:center;align-items:flex-end;
+              height:60px;                   /* меньше высота контейнера */
+              margin:5px auto;
+              max-width:200px;">${bars}</div>`;
+}
+
+function showStatsMenu(){
+  overlay.style.display='block';
+  const avgScore = stats.gamesPlayed ? Math.floor(stats.totalScore / stats.gamesPlayed) : 0;
+  const avgTime = stats.gamesPlayed ? Math.floor(stats.totalTime / stats.gamesPlayed) : 0;
+
+  let html = `<h2 style="color:var(--neon-cyan);margin-bottom:12px">Статистика пилота</h2>
+  <div style="text-align:left;max-width:360px;margin:0 auto;">
+    <div>🎮 Игр сыграно: <span style="color:var(--neon-cyan)">${stats.gamesPlayed}</span></div>
+    <div>☠️ Смертей: <span style="color:var(--neon-cyan)">${stats.deaths}</span></div>
+    <div>💎 Алмазов собрано: <span style="color:var(--neon-cyan)">${stats.diamondCollected}</span></div>
+    <div>🏆 Лучший рекорд: <span style="color:var(--neon-cyan)">${best}</span></div>
+    <div>📊 Средний счёт: <span style="color:var(--neon-cyan)">${avgScore}</span></div>
+    <div>⏱ Среднее время: <span style="color:var(--neon-cyan)">${avgTime}s</span></div>
+  </div>`;
+
+  html += `<h3 style="margin-top:20px;color:var(--neon-pink)">Прогресс последних игр</h3>`;
+  html += generateScoreGraph(stats.bestScores);
+
+  html += `<div style="height:10px"></div><div style="display:flex;gap:8px;justify-content:center;max-width:360px;margin:0 auto">
+    <button class="primary" id="statsBack">Назад</button>
+    <button class="danger" id="resetStats">Сбросить</button>
+  </div>`;
+
+  overlay.innerHTML = html;
+  document.getElementById('statsBack').addEventListener('click', showMainMenu, {once:true});
+  document.getElementById('resetStats').addEventListener('click',()=>{
+    if(confirm('Сбросить статистику?')){
+      stats.gamesPlayed = 0;
+      stats.totalScore = 0;
+      stats.totalTime = 0;
+      stats.deaths = 0;
+      stats.diamondCollected = 0;
+      stats.bestScores = [];
+      saveStats();
+      showStatsMenu();
+    }
+  }, {once:true});
+}
 
 /* init */
 reset();
