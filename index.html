@@ -299,25 +299,30 @@ function showLoadingScreen(){
 }
 
 /* Menus */
-function showMainMenu(){
-  overlay.style.display='block';
+function showMainMenu() {
+  overlay.style.display = 'block';
 
   const tg = window.Telegram?.WebApp || {};
   tg.expand?.();
-  const user = tg.initDataUnsafe?.user || { first_name: 'Гость' };
-
+  const user = tg.initDataUnsafe?.user || { first_name: 'Гость', id: 0, photo_url: '' };
+  
   const achIndicator = newAchUnlocked ? '<span class="ach-new-indicator">•</span>' : '';
 
   overlay.innerHTML = `
     <div style="position:relative; width:100%; height:100%;">
 
-      <!-- Имя пользователя в правом верхнем углу -->
-      <div style="position:absolute; top:10px; right:10px; color:var(--neon-cyan); font-weight:600; z-index:10;">
-        ${user.first_name || user.username || 'Гость'}
-      </div>
-
       <!-- Меню контент -->
       <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%;">
+        
+        <!-- Пользователь -->
+        <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
+          ${user.photo_url ? `<img src="${user.photo_url}" style="width:32px; height:32px; border-radius:50%;">` : ''}
+          <div style="color:var(--neon-cyan); font-weight:600; text-align:center;">
+            ${user.first_name || user.username || 'Гость'}<br>
+            <span style="font-size:10px; color:var(--muted)">ID: ${user.id}</span>
+          </div>
+        </div>
+
         <h1 style="margin:0 0 12px;font-family:Orbitron,Share Tech Mono,monospace;color:var(--neon-pink);text-shadow:0 0 20px rgba(255,45,149,.2)">
           Don't Touch The Wall
         </h1>
@@ -333,8 +338,8 @@ function showMainMenu(){
           <button class="primary" id="statsBtn">Статистика</button>
           <button class="primary" id="graphicsBtn">Графика</button>
         </div>
-      </div>
 
+      </div>
     </div>
   `;
 
@@ -351,7 +356,6 @@ function showMainMenu(){
 
   newAchUnlocked = false;
 }
-
 
 function showBoostersMenu(){
     overlay.style.display='block';
