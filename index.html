@@ -275,6 +275,35 @@ function probeFPS(cb){
   requestAnimationFrame(step);
 }
 
+function initGame(){
+  // --- Telegram авто-загрузка ---
+  const tg = window.Telegram?.WebApp;
+  const user = tg?.initDataUnsafe?.user;
+
+  if (user) {
+    const saved = localStorage.getItem(`tg_data_${user.id}`);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (parsed.stats) stats = parsed.stats;
+        if (parsed.achievements) achievements = parsed.achievements;
+        localStorage.setItem('tg_user', JSON.stringify(user));
+        notify(`👋 Добро пожаловать, ${user.first_name}! Прогресс загружен.`);
+      } catch (err) {
+        console.error('Ошибка загрузки Telegram данных:', err);
+      }
+    } else {
+      notify(`👋 Привет, ${user.first_name}! Начни игру и сохрани прогресс.`);
+    }
+  } else {
+    console.log('Не найден Telegram WebApp, запуск в обычном режиме.');
+  }
+
+  // ... остальная инициализация игры (рендер меню, загрузка UI и т.д.)
+  showMainMenu();
+}
+
+
 /* loading -> menu */
 function showLoadingScreen(){
   detectByHardware();
