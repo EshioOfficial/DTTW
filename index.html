@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="ru">
 <head>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
 <meta charset="utf-8"/>
 <meta name="viewport" content="width=device-width,initial-scale=1"/>
 <title>Don't Touch The Wall — Rertrowave Edition</title>
@@ -309,12 +310,14 @@ function showMainMenu(){
       <button class="primary" id="achievementsBtn">Достижения ${achIndicator}</button>
       <button class="primary" id="statsBtn">Статистика</button>
       <button class="primary" id="graphicsBtn">Графика</button>
+      <button class="primary" id="tgAuth">Привязка Telegram</button>
     </div>`;
   document.getElementById('startBtn').addEventListener('click', ()=>{ overlay.style.display='none'; reset(); startGame(); }, {once:true});
   document.getElementById('boostersBtn').addEventListener('click', showBoostersMenu);
   document.getElementById('graphicsBtn').addEventListener('click', showGraphicsMenu);
   document.getElementById('achievementsBtn').addEventListener('click', showAchievementsMenu);
   document.getElementById('statsBtn').addEventListener('click', showStatsMenu);
+  document.getElementById('tgAuth').addEventListener('click', showTelegramAuth);
   newAchUnlocked = false; // сброс индикатора при открытии меню
 }
 
@@ -897,6 +900,80 @@ function showStatsMenu(){
       showStatsMenu();
     }
   }, {once:true});
+}
+
+function showTelegramAuth() {
+  overlay.style.display = 'block';
+  const tg = window.Telegram.WebApp;
+  const user = tg.initDataUnsafe?.user;
+
+  let html = `<h2 style="color:var(--neon-cyan);margin-bottom:10px">Привязка Telegram</h2>`;
+
+  if (user) {
+    html += `
+      <div style="text-align:center">
+        <img src="${user.photo_url || 'https://telegram.org/img/t_logo.png'}" 
+             alt="avatar"
+             style="width:70px;height:70px;border-radius:50%;margin-bottom:10px;border:2px solid var(--neon-cyan)">
+        <div style="color:var(--neon-cyan);font-size:16px;margin-bottom:6px;">
+          ${user.first_name} ${user.last_name || ''}
+        </div>
+        <div style="font-size:13px;color:var(--muted);margin-bottom:16px;">ID: ${user.id}</div>
+        <button class="primary" id="saveTG">Сохранить прогресс</button>
+        <div style="margin-top:10px">
+          <button class="primary" id="loadTG">Загрузить прогресс</button>
+        </div>
+        <div style="margin-top:14px">
+          <button class="primary" id="backMain">Назад</button>
+        </div>
+      </div>`;
+  } else {
+    html += `
+      <div style="color:var(--muted);font-size:14px;margin-bottom:16px;">
+        Открой игру через Telegram, чтобы подключить аккаунт.
+      </div>
+      <button class="primary" id="backMain">Назад</button>`;
+  }
+
+  overlay.innerHTML = html;
+
+  const saveBtn = document.getElementById('saveTG');
+  const loadBtn = document.getElementById('loadTG');
+  const backBtn = document.getElementById('backMain');
+
+  // 💾 Сохранение статистики и достижений
+  if (saveBtn) {
+    saveBtn.addEventListener('click', () => {
+      const gameData = {
+        stats,
+        achievements
+      };
+      localStorage.setItem(`tg_data_${user.id}`, JSON.stringify(gameData));
+      localStorage.setItem('tg_user', JSON.stringify(user));
+      notify(`✅ Прогресс сохранён для ${user.first_name}`);
+      showMainMenu();
+    });
+  }
+
+  // 🔄 Загрузка сохранённого прогресса
+  if (loadBtn) {
+    loadBtn.addEventListener('click', () => {
+      const saved = localStorage.getItem(`tg_data_${user.id}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        stats = parsed.stats || stats;
+        achievements = parsed.achievements || achievements;
+        notify(`📦 Прогресс ${user.first_name} загружен`);
+        showMainMenu();
+      } else {
+        notify('❌ Нет сохранённого прогресса');
+      }
+    });
+  }
+
+  if (backBtn) {
+    backBtn.addEventListener('click', showMainMenu, {once:true});
+  }
 }
 
 /* init */
