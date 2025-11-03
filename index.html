@@ -313,13 +313,15 @@ function showMainMenu() {
 
       <!-- Меню контент -->
       <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:100%;">
-        
+
         <!-- Пользователь -->
-        <div style="display:flex; align-items:center; gap:8px; margin-bottom:12px;">
-          ${user.photo_url ? `<img src="${user.photo_url}" style="width:32px; height:32px; border-radius:50%;">` : ''}
+        <div style="display:flex; flex-direction:column; align-items:center; gap:4px; margin-bottom:12px;">
+          ${user.photo_url ? `<img src="${user.photo_url}" style="width:48px; height:48px; border-radius:50%; object-fit:cover;">` : ''}
           <div style="color:var(--neon-cyan); font-weight:600; text-align:center;">
-            ${user.first_name || user.username || 'Гость'}<br>
-            <span style="font-size:10px; color:var(--muted)">ID: ${user.id}</span>
+            ${user.first_name || user.username || 'Гость'}
+          </div>
+          <div style="font-size:10px; color:var(--muted); text-align:center;">
+            ID: ${user.id}
           </div>
         </div>
 
