@@ -300,23 +300,53 @@ function showLoadingScreen(){
 /* Menus */
 function showMainMenu(){
   overlay.style.display='block';
+
+  // Получаем пользователя Telegram
+  const tg = window.Telegram?.WebApp || {};
+  tg.expand?.();
+  const user = tg.initDataUnsafe?.user || { first_name: 'Гость' };
+
   const achIndicator = newAchUnlocked ? '<span class="ach-new-indicator">•</span>' : '';
-  overlay.innerHTML = `<h1 style="margin:0 0 12px;font-family:Orbitron,Share Tech Mono,monospace;color:var(--neon-pink);text-shadow:0 0 20px rgba(255,45,149,.2)">Don't Touch The Wall</h1>
-    <div class="small" style="margin-bottom:10px;color:var(--muted)">Tap / Click / Space — flap · Esc — pause</div>
-    <div style="display:flex;flex-direction:column;align-items:center">
-      <button class="primary" id="startBtn">Играть</button>
-      <button class="primary" id="boostersBtn">Бустеры</button>
-      <button class="primary" id="achievementsBtn">Достижения ${achIndicator}</button>
-      <button class="primary" id="statsBtn">Статистика</button>
-      <button class="primary" id="graphicsBtn">Графика</button>
-    </div>`;
-  document.getElementById('startBtn').addEventListener('click', ()=>{ overlay.style.display='none'; reset(); startGame(); }, {once:true});
+
+  overlay.innerHTML = `
+    <div style="position:relative;">
+      <!-- Отображение имени пользователя в правом верхнем углу -->
+      <div style="position:absolute; top:10px; right:10px; color:var(--neon-cyan); font-weight:600;">
+        ${user.first_name || user.username || 'Гость'}
+      </div>
+
+      <h1 style="margin:0 0 12px;font-family:Orbitron,Share Tech Mono,monospace;color:var(--neon-pink);text-shadow:0 0 20px rgba(255,45,149,.2)">
+        Don't Touch The Wall
+      </h1>
+
+      <div class="small" style="margin-bottom:10px;color:var(--muted)">
+        Tap / Click / Space — flap · Esc — pause
+      </div>
+
+      <div style="display:flex;flex-direction:column;align-items:center">
+        <button class="primary" id="startBtn">Играть</button>
+        <button class="primary" id="boostersBtn">Бустеры</button>
+        <button class="primary" id="achievementsBtn">Достижения ${achIndicator}</button>
+        <button class="primary" id="statsBtn">Статистика</button>
+        <button class="primary" id="graphicsBtn">Графика</button>
+      </div>
+    </div>
+  `;
+
+  document.getElementById('startBtn').addEventListener('click', ()=>{ 
+    overlay.style.display='none'; 
+    reset(); 
+    startGame(); 
+  }, {once:true});
+
   document.getElementById('boostersBtn').addEventListener('click', showBoostersMenu);
   document.getElementById('graphicsBtn').addEventListener('click', showGraphicsMenu);
   document.getElementById('achievementsBtn').addEventListener('click', showAchievementsMenu);
   document.getElementById('statsBtn').addEventListener('click', showStatsMenu);
+
   newAchUnlocked = false; // сброс индикатора при открытии меню
 }
+
 
 function showBoostersMenu(){
     overlay.style.display='block';
