@@ -942,15 +942,41 @@ function showStatsMenu(){
   }, {once:true});
 }
 
+async function uploadBestToLeaderboard() {
+  try {
+    const user = Telegram.WebApp.initDataUnsafe.user;
+    if (!user) return;
+
+    const best = Number(localStorage.getItem('dttw_best') || 0);
+
+    const payload = {
+      id: user.id,
+      name: user.first_name || user.username || "Гость",
+      best: best,
+      date: new Date().toISOString()
+    };
+
+    const SHEET_URL = "https://script.google.com/macros/s/AKfycbyr6didIPd49rkxSapuYww4c78rhKImrtlgzSumCKdPwzIW8KQ3-ybmV_MIKebjpL-2Fw/exec";
+    await fetch(SHEET_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    // Обновляем таблицу после отправки
+    showLeaderboardMenu();
+  } catch (err) {
+    console.error("Ошибка отправки рекорда:", err);
+  }
+}
+
 async function showLeaderboardMenu() {
   overlay.style.display = 'block';
   overlay.innerHTML = `
     <h2 style="color:var(--neon-pink);margin-bottom:12px;">🏆 Таблица лидеров</h2>
-
     <div id="leaderboardList" style="text-align:left;max-width:360px;margin:0 auto;color:var(--neon-cyan)">
       <div style="text-align:center;color:var(--neon-cyan)">Загрузка...</div>
     </div>
-
     <div style="height:10px"></div>
     <div style="display:flex;gap:8px;justify-content:center;max-width:360px;margin:0 auto;">
       <button class="primary" id="leaderboardBack">Назад</button>
@@ -958,29 +984,24 @@ async function showLeaderboardMenu() {
     </div>
   `;
 
-  // обработчики кнопок
   document.getElementById('leaderboardBack').addEventListener('click', showMainMenu, { once: true });
   document.getElementById('refreshLeaderboard').addEventListener('click', showLeaderboardMenu, { once: true });
 
-  // загружаем данные
   const data = await loadLeaderboardData();
   renderLeaderboardList(data);
 }
 
-// ===== Загрузка данных из Google Sheets =====
 async function loadLeaderboardData() {
   try {
-    const SHEET_URL = "https://script.google.com/macros/s/AKfycbyR_vEz7KqgbbPPNTezaWMncLXnsxDCUQM_W0mmugCK_SJyqrW3qhdswMno3iZQ7SAeaA/exec";
+    const SHEET_URL = "https://script.google.com/macros/s/AKfycbyr6didIPd49rkxSapuYww4c78rhKImrtlgzSumCKdPwzIW8KQ3-ybmV_MIKebjpL-2Fw/execc";
     const res = await fetch(SHEET_URL);
-    const data = await res.json();
-    return data;
-  } catch (e) {
-    console.error(e);
+    return await res.json();
+  } catch (err) {
+    console.error(err);
     return [];
   }
 }
 
-// ===== Отрисовка таблицы =====
 function renderLeaderboardList(list) {
   const user = Telegram.WebApp.initDataUnsafe.user;
   const container = document.getElementById('leaderboardList');
@@ -990,7 +1011,6 @@ function renderLeaderboardList(list) {
     return;
   }
 
-  // Сортируем по рекорду
   list.sort((a, b) => b.best - a.best);
 
   let html = `<div style="border:1px solid var(--neon-pink);border-radius:8px;padding:8px;">`;
@@ -1012,42 +1032,6 @@ function renderLeaderboardList(list) {
 
   html += `</div>`;
   container.innerHTML = html;
-}
-
-// ===== Отправка рекорда из localStorage =====
-async function uploadBestToLeaderboard() {
-  try {
-    const user = Telegram.WebApp.initDataUnsafe.user;
-    if (!user) {
-      console.warn("Нет данных о пользователе Telegram");
-      return;
-    }
-
-    const best = Number(localStorage.getItem('dttw_best') || 0);
-
-    const payload = {
-      id: user.id,
-      name: user.first_name || user.username || "Гость",
-      best: best,
-      date: new Date().toISOString()
-    };
-
-    const SHEET_URL = "https://script.google.com/macros/s/AKfycbyR_vEz7KqgbbPPNTezaWMncLXnsxDCUQM_W0mmugCK_SJyqrW3qhdswMno3iZQ7SAeaA/exec";
-    const res = await fetch(SHEET_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload)
-    });
-
-    const data = await res.json();
-    console.log("✅ Рекорд отправлен:", data);
-
-    // Автоматически обновляем таблицу после отправки
-    showLeaderboardMenu();
-
-  } catch (err) {
-    console.error("Ошибка отправки рекорда:", err);
-  }
 }
 
 /* init */
