@@ -89,7 +89,7 @@ button.primary{background:linear-gradient(90deg,var(--neon-pink),var(--neon-cyan
 
 <div class="centerMsg" id="overlay" style="display:none"></div>
 
-<div class="footerNote">ver.Alpha 0.6 Retrowave Edition. (Pre-Release) </div>
+<div class="footerNote">ver.Alpha 0.5 Retrowave Edition. Telegram API Integrated. </div>
 <div class="scanlines"></div>
 
 <script>
@@ -339,7 +339,6 @@ function showMainMenu() {
           <button class="primary" id="achievementsBtn">Достижения ${achIndicator}</button>
           <button class="primary" id="statsBtn">Статистика</button>
           <button class="primary" id="graphicsBtn">Графика</button>
-          <button class="primary" id="leaderboardBtn">Таблица лидеров</button>
         </div>
 
       </div>
@@ -356,7 +355,6 @@ function showMainMenu() {
   document.getElementById('graphicsBtn').addEventListener('click', showGraphicsMenu);
   document.getElementById('achievementsBtn').addEventListener('click', showAchievementsMenu);
   document.getElementById('statsBtn').addEventListener('click', showStatsMenu);
-  document.getElementById('leaderboardBtn').addEventListener('click', showLeaderboardMenu);
 
   newAchUnlocked = false;
 }
@@ -940,123 +938,6 @@ function showStatsMenu(){
       showStatsMenu();
     }
   }, {once:true});
-}
-
-async function showLeaderboardMenu() {
-  overlay.style.display = 'block';
-  overlay.innerHTML = `
-    <h2 style="color:var(--neon-pink);margin-bottom:12px;">🏆 Таблица лидеров</h2>
-
-    <div id="leaderboardList" style="text-align:left;max-width:360px;margin:0 auto;color:var(--neon-cyan)">
-      <div style="text-align:center;color:var(--neon-cyan)">Загрузка...</div>
-    </div>
-
-    <div style="height:10px"></div>
-    <div style="display:flex;gap:8px;justify-content:center;max-width:360px;margin:0 auto;">
-      <button class="primary" id="leaderboardBack">Назад</button>
-      <button class="primary" id="refreshLeaderboard">Обновить</button>
-    </div>
-  `;
-
-  // обработчики кнопок
-  document.getElementById('leaderboardBack').addEventListener('click', showMainMenu, { once: true });
-  document.getElementById('refreshLeaderboard').addEventListener('click', showLeaderboardMenu, { once: true });
-
-  // загрузка данных
-  const data = await loadLeaderboardData();
-  renderLeaderboardList(data);
-}
-
-// URL твоего Web App
-const SHEET_URL = "https://script.google.com/macros/s/AKfycbxB9RCMkSMNAlkwPfl5hXq8NB-NeZnQfUC0UUxwDx7xv449OfaHg4VqYglCMVlChUk45A/exec";
-
-// ------------------- Отправка результата игрока -------------------
-async function sendPlayerScore(score) {
-  const user = Telegram.WebApp.initDataUnsafe.user;
-  if (!user) return;
-
-  try {
-    await fetch(SHEET_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        id: user.id,
-        name: user.first_name || user.username || "Гость",
-        score: score
-      })
-    });
-  } catch (err) {
-    console.error("Ошибка отправки результата:", err);
-  }
-}
-
-// ------------------- Показ таблицы лидеров -------------------
-async function showLeaderboardMenu() {
-  overlay.style.display = 'block';
-  overlay.innerHTML = `
-    <h2 style="color:var(--neon-pink);margin-bottom:12px;">🏆 Таблица лидеров</h2>
-
-    <div id="leaderboardList" style="text-align:left;max-width:360px;margin:0 auto;color:var(--neon-cyan)">
-      <div style="text-align:center;color:var(--neon-cyan)">Загрузка...</div>
-    </div>
-
-    <div style="height:10px"></div>
-    <div style="display:flex;gap:8px;justify-content:center;max-width:360px;margin:0 auto;">
-      <button class="primary" id="leaderboardBack">Назад</button>
-      <button class="primary" id="refreshLeaderboard">Обновить</button>
-    </div>
-  `;
-
-  // кнопки
-  document.getElementById('leaderboardBack').addEventListener('click', showMainMenu, { once: true });
-  document.getElementById('refreshLeaderboard').addEventListener('click', showLeaderboardMenu, { once: true });
-
-  // загрузка данных
-  const data = await loadLeaderboardData();
-  renderLeaderboardList(data);
-}
-
-// ------------------- Загрузка топ-10 -------------------
-async function loadLeaderboardData() {
-  try {
-    const res = await fetch(SHEET_URL);
-    const data = await res.json();
-    return data;
-  } catch (err) {
-    console.error("Ошибка загрузки таблицы лидеров:", err);
-    return [];
-  }
-}
-
-// ------------------- Отображение списка -------------------
-function renderLeaderboardList(list) {
-  const user = Telegram.WebApp.initDataUnsafe.user;
-  const container = document.getElementById('leaderboardList');
-
-  if (!list || list.length === 0) {
-    container.innerHTML = `<div style="text-align:center;color:var(--neon-cyan)">Нет данных 😢</div>`;
-    return;
-  }
-
-  let html = `<div style="border:1px solid var(--neon-pink);border-radius:8px;padding:8px;">`;
-
-  list.forEach((p, i) => {
-    const isMe = user && p.id == user.id;
-    html += `
-      <div style="
-        display:flex;
-        justify-content:space-between;
-        background:${isMe ? 'rgba(255,0,255,0.15)' : 'transparent'};
-        padding:6px 10px;
-        border-bottom:1px solid rgba(255,255,255,0.1);
-      ">
-        <span>${i + 1}. ${p.name}</span>
-        <span style="color:var(--neon-cyan)">${p.score}</span>
-      </div>`;
-  });
-
-  html += `</div>`;
-  container.innerHTML = html;
 }
 
 /* init */
