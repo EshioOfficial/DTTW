@@ -89,7 +89,7 @@ button.primary{background:linear-gradient(90deg,var(--neon-pink),var(--neon-cyan
 
 <div class="centerMsg" id="overlay" style="display:none"></div>
 
-<div class="footerNote">ver.Alpha 0.6 Retrowave Edition. </div>
+<div class="footerNote">ver.Alpha 0.5 Retrowave Edition. Telegram API Integrated. </div>
 <div class="scanlines"></div>
 
 <script>
@@ -969,7 +969,7 @@ async function showLeaderboardMenu() {
 
 async function loadLeaderboardData() {
   try {
-    const SHEET_URL = "https://script.google.com/macros/s/AKfycbz5lQmExmGM7FUICnq1tECEzBtV9FfEHK7dl7GHSJohthLrR0cc0CV8_JbB9dqufu9WeQ/exec";
+    const SHEET_URL = "https://script.google.com/macros/s/AKfycbxAfBcM9KW6aTn0lniW1S1nyByL7gLkg3maxcz8uupJX4exFRv7aFh_Xo1YW_S96czN9A/exec";
     const res = await fetch(SHEET_URL);
     const data = await res.json();
     return data;
