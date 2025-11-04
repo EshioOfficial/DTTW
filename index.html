@@ -970,7 +970,7 @@ async function showLeaderboardMenu() {
 // ===== Загрузка данных из Google Sheets =====
 async function loadLeaderboardData() {
   try {
-    const SHEET_URL = "https://script.google.com/macros/s/AKfycbz4joL2IRl0e9tPqhfsX3xNesFpWwFFDM7rcDfXfjh68yyOurXo0-sZGwkUDS4YyTzgrg/exec";
+    const SHEET_URL = "https://script.google.com/macros/s/AKfycbyR_vEz7KqgbbPPNTezaWMncLXnsxDCUQM_W0mmugCK_SJyqrW3qhdswMno3iZQ7SAeaA/exec";
     const res = await fetch(SHEET_URL);
     const data = await res.json();
     return data;
@@ -1032,7 +1032,7 @@ async function uploadBestToLeaderboard() {
       date: new Date().toISOString()
     };
 
-    const SHEET_URL = "https://script.google.com/macros/s/AKfycbz4joL2IRl0e9tPqhfsX3xNesFpWwFFDM7rcDfXfjh68yyOurXo0-sZGwkUDS4YyTzgrg/exec";
+    const SHEET_URL = "https://script.google.com/macros/s/AKfycbyR_vEz7KqgbbPPNTezaWMncLXnsxDCUQM_W0mmugCK_SJyqrW3qhdswMno3iZQ7SAeaA/exec";
     const res = await fetch(SHEET_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
